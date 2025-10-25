@@ -1,12 +1,15 @@
 import * as Sentry from '@sentry/node';
 import express from 'express';
+import swaggerUi from 'swagger-ui-express';
 
 import { env } from './env';
 import { registerRoutes } from './express';
 import { serviceLogger } from './logger';
 import { connectToMongoDB } from './mongo/mongoose';
+import { swaggerSpec } from './swagger';
 
 const app = express();
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 registerRoutes(app);
 
