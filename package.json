@@ -57,6 +57,10 @@
     "typescript-eslint": "^8.29.0"
   },
   "dependencies": {
+    "@lit-protocol/vincent-ability-debridge": "^0.2.4",
+    "@qwe638853/ability-bungee": "^0.1.9",
+    "@qwe638853/ability-sponsor-transaction": "^0.0.3",
+    "axios": "^1.12.2",
     "consola": "^3.2.3",
     "tslib": "^2.8.1"
   }

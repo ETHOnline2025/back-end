@@ -37,7 +37,9 @@ export const env = createEnv({
     SENTRY_DSN: z.string().optional(),
     SENTRY_ORG: z.string().optional(),
     SENTRY_PROJECT: z.string().optional(),
+    SOLANA_SYNC_RPC: z.string().url().optional(),
     VINCENT_APP_ID: z.coerce.number(),
+    VINCENT_BRIDGE_PREFERRED: z.enum(['debridge', 'bungee']).default('debridge'),
     VINCENT_DELEGATEE_PRIVATE_KEY: z.string(),
   },
 });
