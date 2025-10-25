@@ -18,6 +18,8 @@ import {
 import { userKey, VincentAuthenticatedRequest } from './types';
 import { env } from '../env';
 import { serviceLogger } from '../logger';
+import { handleCreateOrderRoute, handleGetOrderRoute, handleListOrdersRoute  } from './orders';
+import { handleListTradesRoute } from './trades';
 
 const { ALLOWED_AUDIENCE, CORS_ALLOWED_DOMAIN, IS_DEVELOPMENT, VINCENT_APP_ID } = env;
 
@@ -84,6 +86,16 @@ export const registerRoutes = (app: Express) => {
     setSentryUserMiddleware,
     handler(handleDeleteScheduleRoute)
   );
+
+  app.post('/orders', middleware, setSentryUserMiddleware, handler(handleCreateOrderRoute));
+  app.get('/orders', middleware, setSentryUserMiddleware, handler(handleListOrdersRoute));
+  app.get(
+    '/orders/:orderId',
+    middleware,
+    setSentryUserMiddleware,
+    handler(handleGetOrderRoute)
+  );
+  app.get('/trades', middleware, setSentryUserMiddleware, handler(handleListTradesRoute));
 
   serviceLogger.info(`Routes registered`);
 };
