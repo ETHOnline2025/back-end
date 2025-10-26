@@ -1,6 +1,6 @@
 import * as Sentry from '@sentry/node';
 import cors from 'cors';
-import express, { Express, NextFunction, Response } from 'express';
+import express, { Express, NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 
 import { createVincentUserMiddleware } from '@lit-protocol/vincent-app-sdk/expressMiddleware';
@@ -18,8 +18,9 @@ import {
 import { userKey, VincentAuthenticatedRequest } from './types';
 import { env } from '../env';
 import { serviceLogger } from '../logger';
-import { handleCreateOrderRoute, handleGetOrderRoute, handleListOrdersRoute  } from './orders';
+import { handleCreateOrderRoute, handleGetOrderRoute, handleListOrdersRoute, handleCancelOrderRoute } from './orders';
 import { handleListTradesRoute } from './trades';
+import { OrderCreateSchema, OrderIdentitySchema } from './schema';
 
 const { ALLOWED_AUDIENCE, CORS_ALLOWED_DOMAIN, IS_DEVELOPMENT, VINCENT_APP_ID } = env;
 
@@ -47,6 +48,34 @@ const setSentryUserMiddleware = handler(
     next();
   }
 );
+
+// Validation middleware for order creation
+const validateOrderCreate = (req: Request, res: Response, next: NextFunction) => {
+  try {
+    req.body = OrderCreateSchema.parse(req.body);
+    next();
+  } catch (error) {
+    res.status(400).json({ 
+      error: 'Validation failed', 
+      success: false, 
+      details: error.errors || error.message 
+    });
+  }
+};
+
+// Validation middleware for order ID parameter
+const validateOrderId = (req: Request, res: Response, next: NextFunction) => {
+  try {
+    OrderIdentitySchema.parse({ orderId: req.params.orderId });
+    next();
+  } catch (error) {
+    res.status(400).json({ 
+      error: 'Invalid order ID', 
+      success: false, 
+      details: error.errors || error.message 
+    });
+  }
+};
 
 export const registerRoutes = (app: Express) => {
   app.use(helmet());
@@ -87,14 +116,10 @@ export const registerRoutes = (app: Express) => {
     handler(handleDeleteScheduleRoute)
   );
 
-  app.post('/orders', middleware, setSentryUserMiddleware, handler(handleCreateOrderRoute));
-  app.get('/orders', middleware, setSentryUserMiddleware, handler(handleListOrdersRoute));
-  app.get(
-    '/orders/:orderId',
-    middleware,
-    setSentryUserMiddleware,
-    handler(handleGetOrderRoute)
-  );
+  app.post('/orders', validateOrderCreate, handleCreateOrderRoute);
+  app.get('/orders', handleListOrdersRoute);
+  app.get('/orders/:orderId', validateOrderId, handleGetOrderRoute);
+  app.delete('/orders/:orderId', validateOrderId, handleCancelOrderRoute);
   app.get('/trades', middleware, setSentryUserMiddleware, handler(handleListTradesRoute));
 
   serviceLogger.info(`Routes registered`);

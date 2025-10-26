@@ -8,7 +8,7 @@ export const processOrderMatching = async (newOrder: IOrder, session: mongoose.C
   let matchedAmount = 0;
   const trades: ITrade[] = [];
   let remainingNewOrderAmount = newOrder.amount; // Start with the new order's full amount
-  let newOrderStatus: IOrder['status'] = 'OPEN'; // Default status if no matches
+  let newOrderStatus: IOrder['status'] = 'PENDING'; // Default status if no matches
 
   const oppositeSide = newOrder.side === 'BUY' ? 'SELL' : 'BUY';
 

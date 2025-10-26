@@ -53,6 +53,14 @@ export const OrderCreateSchema = z.object({
     required_error: 'CAIP-10 Wallet is required.',
     invalid_type_error: 'CAIP-10 Wallet must be a string.',
   }).min(1, 'CAIP-10 Wallet cannot be empty.'), // Example: "eip155:1:0x..."
+  ethAddress: z.string({
+    required_error: 'Ethereum address is required.',
+    invalid_type_error: 'Ethereum address must be a string.',
+  }).refine((val) => /^0x[a-fA-F0-9]{40}$/.test(val), { message: 'Invalid Ethereum address' }),
+  symbol: z.string({
+    required_error: 'Symbol is required.',
+    invalid_type_error: 'Symbol must be a string.',
+  }).min(1, 'Symbol cannot be empty.'),
   metadata: z.record(z.any()).optional(), // Optional metadata object
 });
 
@@ -76,7 +84,7 @@ export const OrderSchema = OrderCreateSchema.extend({
   ownerCaip10: z.string().min(1, 'Owner CAIP-10 Wallet cannot be empty.'), // The wallet that owns the order, redundant with caip10Wallet but often kept for clarity
   remaining: z.number().min(0, 'Remaining amount cannot be negative.'),
   status: z.union([
-    z.literal('OPEN'),
+    z.literal('PENDING'),
     z.literal('PARTIALLY_FILLED'),
     z.literal('FILLED'),
     z.literal('CANCELED'),

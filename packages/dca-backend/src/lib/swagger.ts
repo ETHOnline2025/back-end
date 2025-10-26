@@ -26,6 +26,8 @@ export const swaggerSpec = {
           'side',
           'price',
           'caip10Token',
+          'caip10Wallet',
+          'ethAddress',
           'symbol',
           'metadata',
         ],
@@ -52,6 +54,17 @@ export const swaggerSpec = {
             type: 'string',
             description: 'CAIP-10 identifier for the token being traded (e.g., eip155:1/erc20:0x...).',
             example: 'eip155:1/erc20:0x1f9840a85d5af5bf1d1762fcd6407d85fd2df3ef',
+          },
+          caip10Wallet: {
+            type: 'string',
+            description: 'CAIP-10 identifier for the wallet (e.g., eip155:1:0x...).',
+            example: 'eip155:1:0xabc123def4567890123456789012345678901234',
+          },
+          ethAddress: {
+            type: 'string',
+            description: 'Ethereum address of the wallet creating the order.',
+            example: '0xabc123def4567890123456789012345678901234',
+            pattern: '^0x[a-fA-F0-9]{40}$',
           },
           symbol: {
             type: 'string',
@@ -117,7 +130,7 @@ export const swaggerSpec = {
           },
           status: {
             type: 'string',
-            enum: ['PENDING', 'COMPLETED', 'CANCELLED'],
+            enum: ['PENDING', 'PARTIALLY_FILLED', 'FILLED', 'CANCELED'],
             description: 'The current status of the order.',
             example: 'PENDING',
           },
@@ -253,10 +266,22 @@ export const swaggerSpec = {
   paths: {
     '/orders': {
       get: {
-        summary: 'List all orders for the authenticated wallet',
-        description: 'Retrieves a list of all orders associated with the `ethAddress` extracted from the provided JWT. These orders are filtered by the `caip10Wallet` field in the database.',
-        security: [{ VincentJWT: [] }],
+        summary: 'List all orders for a wallet address',
+        description: 'Retrieves a list of all orders associated with the provided `ethAddress` query parameter. These orders are filtered by the `caip10Wallet` field in the database.',
         tags: ['Orders'],
+        parameters: [
+          {
+            name: 'ethAddress',
+            in: 'query',
+            required: true,
+            description: 'The Ethereum address of the wallet to retrieve orders for.',
+            schema: {
+              type: 'string',
+              pattern: '^0x[a-fA-F0-9]{40}$',
+              example: '0xabc123def4567890123456789012345678901234',
+            },
+          },
+        ],
         responses: {
           '200': {
             description: 'Successfully retrieved orders.',
@@ -268,8 +293,8 @@ export const swaggerSpec = {
               },
             },
           },
-          '404': {
-            description: 'No orders found for the authenticated wallet address.',
+          '400': {
+            description: 'Bad Request - ethAddress parameter is required.',
             content: {
               'application/json': {
                 schema: {
@@ -278,8 +303,8 @@ export const swaggerSpec = {
               },
             },
           },
-          '401': {
-            description: 'Unauthorized - invalid or missing JWT.',
+          '404': {
+            description: 'No orders found for the provided wallet address.',
             content: {
               'application/json': {
                 schema: {
@@ -302,8 +327,7 @@ export const swaggerSpec = {
       },
       post: {
         summary: 'Create a new order',
-        description: 'Creates a new order. The `caip10Wallet` field for the order will be automatically populated with the `ethAddress` extracted from the provided JWT.',
-        security: [{ VincentJWT: [] }],
+        description: 'Creates a new order. The `ethAddress` field must be provided in the request body.',
         tags: ['Orders'],
         requestBody: {
           required: true,
@@ -327,17 +351,7 @@ export const swaggerSpec = {
             },
           },
           '400': {
-            description: 'Bad Request - invalid input data (e.g., missing amount or side).',
-            content: {
-              'application/json': {
-                schema: {
-                  $ref: '#/components/schemas/ErrorResponse'
-                },
-              },
-            },
-          },
-          '401': {
-            description: 'Unauthorized - invalid or missing JWT.',
+            description: 'Bad Request - invalid input data (e.g., missing amount, side, or ethAddress).',
             content: {
               'application/json': {
                 schema: {
@@ -362,8 +376,7 @@ export const swaggerSpec = {
     '/orders/{orderId}': {
       get: {
         summary: 'Get a specific order by ID',
-        description: 'Retrieves a single order by its ID, ensuring it belongs to the `ethAddress` from the provided JWT (which is matched against the order\'s `caip10Wallet` field).',
-        security: [{ VincentJWT: [] }],
+        description: 'Retrieves a single order by its ID, ensuring it belongs to the provided `ethAddress` query parameter.',
         tags: ['Orders'],
         parameters: [
           {
@@ -375,6 +388,17 @@ export const swaggerSpec = {
               type: 'string',
               format: 'uuid',
               example: '654c600f7e1b9b1a2c3d4e5f',
+            },
+          },
+          {
+            name: 'ethAddress',
+            in: 'query',
+            required: true,
+            description: 'The Ethereum address of the wallet that owns the order.',
+            schema: {
+              type: 'string',
+              pattern: '^0x[a-fA-F0-9]{40}$',
+              example: '0xabc123def4567890123456789012345678901234',
             },
           },
         ],
@@ -389,8 +413,8 @@ export const swaggerSpec = {
               },
             },
           },
-          '404': {
-            description: 'Order with the specified ID not found for the authenticated wallet, or does not belong to it.',
+          '400': {
+            description: 'Bad Request - ethAddress parameter is required.',
             content: {
               'application/json': {
                 schema: {
@@ -399,8 +423,8 @@ export const swaggerSpec = {
               },
             },
           },
-          '401': {
-            description: 'Unauthorized - invalid or missing JWT.',
+          '404': {
+            description: 'Order with the specified ID not found for the provided wallet address.',
             content: {
               'application/json': {
                 schema: {
@@ -411,6 +435,77 @@ export const swaggerSpec = {
           },
           '500': {
             description: 'Server error.',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/ErrorResponse'
+                },
+              },
+            },
+          },
+        },
+      },
+      delete: {
+        summary: 'Cancel an order',
+        description: 'Cancels a PENDING order by its ID, ensuring it belongs to the provided `ethAddress` query parameter.',
+        tags: ['Orders'],
+        parameters: [
+          {
+            name: 'orderId',
+            in: 'path',
+            required: true,
+            description: 'The unique identifier of the order to cancel.',
+            schema: {
+              type: 'string',
+              format: 'uuid',
+              example: '654c600f7e1b9b1a2c3d4e5f',
+            },
+          },
+          {
+            name: 'ethAddress',
+            in: 'query',
+            required: true,
+            description: 'The Ethereum address of the wallet that owns the order.',
+            schema: {
+              type: 'string',
+              pattern: '^0x[a-fA-F0-9]{40}$',
+              example: '0xabc123def4567890123456789012345678901234',
+            },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Order cancelled successfully.',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/SuccessSingleResponse'
+                },
+              },
+            },
+          },
+          '400': {
+            description: 'Bad Request - ethAddress parameter is required.',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/ErrorResponse'
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'Order with the specified ID not found for the provided wallet, already completed, or already cancelled.',
+            content: {
+              'application/json': {
+                schema: {
+                  $ref: '#/components/schemas/ErrorResponse'
+                },
+              },
+            },
+          },
+          '500': {
+            description: 'Failed to cancel order due to a server error.',
             content: {
               'application/json': {
                 schema: {
