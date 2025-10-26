@@ -4,6 +4,35 @@
 
 This project demonstrates how to schedule and execute recurring DCA (Dollar-Cost Averaging) swaps on behalf of end-users using a Vincent App and delegated agent wallets.
 
+## Order Book & CLOB Integration
+
+Macaque features a sophisticated **Central Limit Order Book (CLOB)** system that enables slippage-free trading at CEX-level speeds:
+
+### Multi-Order Book Architecture
+- **Symbol-based Order Books**: Each trading pair (e.g., ETH/USDC, UNI/USDC) maintains its own dedicated order book
+- **Price-Time Priority**: Orders are matched based on price priority (best price first) and time priority (first-come-first-served)
+- **Real-time Matching**: Orders are processed instantly through our off-chain matching engine
+- **Cross-chain Compatibility**: Order books support CAIP10 addresses for seamless multi-chain trading
+
+### Order Types Supported
+- **Market Orders**: Execute immediately at the best available price
+- **Limit Orders**: Execute only at specified price or better
+- **Buy/Sell Orders**: Full support for both sides of the order book
+- **Partial Fills**: Orders can be partially filled and remain active
+
+### Matching Engine Features
+- **Atomic Matching**: Orders are matched atomically to prevent partial fills without counterparties
+- **Price Discovery**: Real-time price discovery through order book depth
+- **Liquidity Aggregation**: Multiple orders can be matched against a single large order
+- **Trade Settlement**: Automatic trade recording and settlement through Vincent integration
+
+### Order Book API Endpoints
+- `POST /orders` - Create new orders
+- `GET /orders` - List orders for a wallet
+- `GET /orders/:orderId` - Get specific order details
+- `DELETE /orders/:orderId` - Cancel pending orders
+- `GET /trades` - View trade history
+
 ## Prerequisites
 
 - Node ^22.16.0
@@ -13,16 +42,19 @@ This project demonstrates how to schedule and execute recurring DCA (Dollar-Cost
 
 ## Monorepo Structure
 
-This codebase is composed of three main parts:
+This codebase is composed of three main parts, enhanced with Macaque's CLOB order book functionality:
 
-- Frontend: React app where users can create, edit, and delete DCA tasks.
-- Database: MongoDB to persist DCA tasks.
-- Backend (Node.js):
-  - Express.js API server used by the frontend
+- **Frontend**: React app where users can create, edit, and delete DCA tasks, plus advanced order book trading interface with real-time order book visualization.
+- **Database**: MongoDB to persist DCA tasks and comprehensive order book data (orders, trades, matching engine state, order book depth).
+- **Backend (Node.js)**:
+  - Express.js API server with comprehensive order book endpoints
   - Agenda-based job scheduler that runs DCA jobs
+  - **Macaque CLOB Matching Engine**: High-performance order matching system with price-time priority
+  - **Multi-Symbol Order Books**: Separate order books for each trading pair
   - Integration with a Vincent App to execute swaps on behalf of users
     - Vincent ERC20 Approval ability: authorizes Uniswap to spend user tokens
     - Vincent Uniswap Swap ability: executes the actual token swaps
+    - **Cross-chain CAIP10 support**: Enhanced for multi-chain order book trading
 
 ## Packages
 
