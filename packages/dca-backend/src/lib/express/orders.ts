@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { ethers } from 'ethers';
 import { getPKPInfo } from '@lit-protocol/vincent-app-sdk/jwt';
-import { getCallContractWhitelistToolClient, getErc20ApprovalToolClient } from '../agenda/jobs/executeDCASwap/vincentAbilities';
+import { executeSyncUpTransaction, createSyncUpData } from '../agenda/jobs/executeDCASwap/utils/signer';
 
 import { Order } from '../mongo/models/Order';
 import { Trade } from '../mongo/models/Trade';
@@ -201,50 +201,28 @@ const depositForUser = async (order: any, amount: number, trade: any) => {
 const executeSyncUp = async (trade: any, fillAmount: number) => {
   console.log(`Executing syncUp for trade ${trade._id}`);
   
-  const callContractClient = getCallContractWhitelistToolClient();
-  
-  // Prepare syncUp arguments for both users using CAIP10 tokens
-  const syncUpArgs = [
-    // Debit seller (remove tokens they're selling)
-    {
-      caip10Wallet: trade.sellerCaip10Wallet,
-      caip10Token: trade.sellerCaip10Token || `eip155:${BASE_CHAIN_ID}:${trade.tokenAddress}`,
-      evmDepositorWallet: trade.sellerEthAddress,
-      newAmount: '0', // Seller's balance after selling
-    },
-    // Credit buyer (give them the tokens they're buying)
-    {
-      caip10Wallet: trade.buyerCaip10Wallet,
-      caip10Token: trade.buyerCaip10Token || `eip155:${BASE_CHAIN_ID}:${trade.tokenAddress}`,
-      evmDepositorWallet: trade.buyerEthAddress,
-      newAmount: fillAmount.toString(), // Buyer receives the tokens
-    }
-  ];
-  
-  // Encode function arguments as base64
-  const functionArgsBase64 = Buffer.from(JSON.stringify([syncUpArgs])).toString('base64');
-  
-  const result = await callContractClient.execute(
-    {
-      contractAddress: TRADING_CONTRACT_ADDRESS,
-      functionAbi: 'function syncUp((string caip10Wallet, string caip10Token, address evmDepositorWallet, uint256 newAmount)[] memory _data) external',
-      functionName: 'syncUp',
-      functionArgsBase64: functionArgsBase64,
-      chain: 'base',
-      chainId: BASE_CHAIN_ID,
-      rpcUrl: BASE_RPC_URL,
-    },
-    {
-      delegatorPkpEthAddress: trade.buyerEthAddress, // Use buyer as delegator
-    }
-  );
-  
-  if (!result.success) {
-    throw new Error(`SyncUp failed: ${result.result?.error || 'Unknown error'}`);
+  try {
+    // Create syncUp data for the transaction
+    const syncUpData = createSyncUpData(
+      trade.buyerCaip10Wallet,
+      trade.sellerCaip10Wallet,
+      trade.buyerCaip10Token || `eip155:${BASE_CHAIN_ID}:${trade.tokenAddress}`,
+      trade.sellerCaip10Token || `eip155:${BASE_CHAIN_ID}:${trade.tokenAddress}`,
+      trade.buyerEthAddress,
+      trade.sellerEthAddress,
+      fillAmount
+    );
+    
+    // Execute the syncUp transaction using the delegatee signer
+    const txHash = await executeSyncUpTransaction(syncUpData);
+    
+    console.log(`SyncUp successful for trade ${trade._id}: ${txHash}`);
+    return { success: true, txHash };
+    
+  } catch (error) {
+    console.error(`SyncUp failed for trade ${trade._id}:`, error);
+    throw new Error(`SyncUp failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-  
-  console.log(`SyncUp successful for trade ${trade._id}: ${result.result?.txHash}`);
-  return result;
 };
 
 // Enhanced order matching function with cross-chain support
