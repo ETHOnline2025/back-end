@@ -307,7 +307,7 @@ export const Trading: React.FC = () => {
           </Tabs>
         </section> */}
       </main>
-
+      console.log('rendering floating dock');
       <FloatingDock
         desktopClassName="fixed bottom-8 left-1/2 z-40 -translate-x-1/2 border border-white/10 bg-black/60 backdrop-blur"
         items={[
