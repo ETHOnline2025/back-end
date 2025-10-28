@@ -20,7 +20,7 @@ import { env } from '../env';
 import { serviceLogger } from '../logger';
 import { handleCreateOrderRoute, handleGetOrderRoute, handleListOrdersRoute, handleCancelOrderRoute } from './orders';
 import { handleListTradesRoute } from './trades';
-import { handleSyncUpRoute, handleGetBalanceRoute } from './trading';
+import { handleSyncUpRoute, handleGetBalanceRoute, handleDepositRoute, handleGetTokenBalanceRoute } from './trading';
 import { OrderCreateSchema, OrderIdentitySchema } from './schema';
 
 const { ALLOWED_AUDIENCE, CORS_ALLOWED_DOMAIN, IS_DEVELOPMENT, VINCENT_APP_ID } = env;
@@ -55,7 +55,7 @@ const validateOrderCreate = (req: Request, res: Response, next: NextFunction) =>
   try {
     req.body = OrderCreateSchema.parse(req.body);
     next();
-  } catch (error) {
+  } catch (error: any) {
     res.status(400).json({ 
       error: 'Validation failed', 
       success: false, 
@@ -69,7 +69,7 @@ const validateOrderId = (req: Request, res: Response, next: NextFunction) => {
   try {
     OrderIdentitySchema.parse({ orderId: req.params.orderId });
     next();
-  } catch (error) {
+  } catch (error: any) {
     res.status(400).json({ 
       error: 'Invalid order ID', 
       success: false, 
@@ -124,8 +124,10 @@ export const registerRoutes = (app: Express) => {
   app.get('/trades', middleware, setSentryUserMiddleware, handler(handleListTradesRoute));
   
   // Trading contract endpoints
-  app.post('/trading/sync-up', handleSyncUpRoute);
-  app.get('/trading/balance', handleGetBalanceRoute);
+  app.post('/trading/sync-up', handler(handleSyncUpRoute));
+  app.get('/trading/balance', handler(handleGetBalanceRoute));
+  app.get('/trading/token-balance', handler(handleGetTokenBalanceRoute));
+  app.post('/trading/deposit', middleware, setSentryUserMiddleware, handler(handleDepositRoute));
 
   serviceLogger.info(`Routes registered`);
 };

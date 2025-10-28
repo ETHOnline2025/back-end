@@ -2,7 +2,7 @@ import { ethers } from 'ethers';
 import { ITrade } from '../../../mongo/models/Trade';
 
 // Trading contract address on Base Sepolia
-const TRADING_CONTRACT_ADDRESS = '0x0b4Aec45bB5F3F70cC6Cdb9771C850fF20D812A4';
+const TRADING_CONTRACT_ADDRESS = '0x3dfB03600550F59bEffb8980c133a8E533761eDF';
 const BASE_RPC_URL = process.env.BASE_RPC_URL || 'https://sepolia.base.org';
 const BASE_CHAIN_ID = 84532;
 
@@ -127,7 +127,7 @@ function extractAddressFromCaip10(caip10: string): string {
  */
 function getTokenAddress(symbol: string): string {
   const tokenAddresses: Record<string, string> = {
-    'USDC': '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913', // Base Sepolia USDC
+    'USDC': '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // Base Sepolia USDC
     'WBTC': '0x0555E30da8f98308EdB960aa94C0Db47230d2B9c', // Base Sepolia WBTC
     'UNI': '0x...', // Add your token addresses here
   };

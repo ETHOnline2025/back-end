@@ -53,10 +53,7 @@ export const OrderCreateSchema = z.object({
     required_error: 'CAIP-10 Wallet is required.',
     invalid_type_error: 'CAIP-10 Wallet must be a string.',
   }).min(1, 'CAIP-10 Wallet cannot be empty.'), // Example: "eip155:1:0x..."
-  ethAddress: z.string({
-    required_error: 'Ethereum address is required.',
-    invalid_type_error: 'Ethereum address must be a string.',
-  }).refine((val) => /^0x[a-fA-F0-9]{40}$/.test(val), { message: 'Invalid Ethereum address' }),
+  // Note: ethAddress is extracted from JWT, not from request body
   symbol: z.string({
     required_error: 'Symbol is required.',
     invalid_type_error: 'Symbol must be a string.',
