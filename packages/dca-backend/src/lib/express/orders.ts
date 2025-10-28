@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 
 import { Order } from '../mongo/models/Order';
 import { Trade } from '../mongo/models/Trade';
-import mongoose from 'mongoose';
+// import mongoose from 'mongoose';
 
 // Simplified order matching function without transactions
 const processOrderMatchingWithoutTransaction = async (newOrder: any): Promise<{ matchedAmount: number; trades: any[] }> => {
@@ -84,23 +84,22 @@ const processOrderMatchingWithoutTransaction = async (newOrder: any): Promise<{ 
 export const handleListOrdersRoute = async (req: Request, res: Response) => {
   const { ethAddress } = req.query;
 
-  if (!ethAddress || typeof ethAddress !== 'string') {
-    res.status(400).json({ error: 'ethAddress query parameter is required' });
-    return;
-  }
 
   // Search for orders where caip10Wallet contains the ethAddress
   // This handles both formats: "0xabc123..." and "eip155:1:0xabc123..."
-  const orders = await Order.find({ 
-    $or: [
-      { caip10Wallet: ethAddress },
-      { caip10Wallet: { $regex: ethAddress, $options: 'i' } }
-    ]
-  })
-    .sort({
-      createdAt: -1,
+  const orders = (!ethAddress || typeof ethAddress !== 'string')
+    ? await Order.find({})
+      .sort({ createdAt: -1 })
+      .lean()
+    : await Order.find({
+      $or: [
+        { caip10Wallet: ethAddress },
+        { caip10Wallet: { $regex: ethAddress, $options: 'i' } },
+      ],
     })
-    .lean();
+      .sort({ createdAt: -1 })
+      .lean();
+
 
   if (orders.length === 0) {
     res.status(404).json({ error: `No orders found for wallet address ${ethAddress}` });
