@@ -7,11 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Spinner } from '@/components/ui/spinner';
 import { Separator } from '@/components/ui/separator';
 
-interface DepositHistoryProps {
-  onRefresh?: () => void;
-}
+interface DepositHistoryProps {}
 
-export const DepositHistory: React.FC<DepositHistoryProps> = ({ onRefresh }) => {
+export const DepositHistory: React.FC<DepositHistoryProps> = () => {
   const { getDeposits } = useBackend();
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [isLoading, setIsLoading] = useState(true);

@@ -37,7 +37,7 @@ export const useChain = () => {
   );
 
   const eurcContract = new ethers.Contract(
-    "0x808456652fdb597867f38412077A9182bf77359F",
+    EURC_CONTRACT_ADDRESSES[chain.chainId],
     ERC20_ABI,
     provider
   );
