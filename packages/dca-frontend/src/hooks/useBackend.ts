@@ -30,10 +30,122 @@ export type DCA = {
   };
 };
 
+export interface Order {
+  _id: string;
+  amount: number;
+  side: 'BUY' | 'SELL';
+  price: number;
+  caip10Wallet: string;
+  symbol: string;
+  remainingAmount: number;
+  status: 'PENDING' | 'PARTIALLY_FILLED' | 'FILLED' | 'CANCELED';
+  createdAt: string;
+  // Enhanced multi-chain fields
+  ethAddress: string;
+  tokenAddress: string;
+  tokenSymbol?: string;
+  sourceChainId: number;
+  sourceChainType: 'NATIVE' | 'OTHER';
+  targetChainId?: number;
+  targetChainType?: 'NATIVE' | 'OTHER';
+  isCrossChain: boolean;
+  targetTokenAddress?: string;
+  targetTokenSymbol?: string;
+  filledAmount: number;
+  averageFillPrice?: number;
+}
+
 export interface CreateDCARequest {
   name: string;
   purchaseAmount: string;
   purchaseIntervalHuman: string;
+}
+
+export interface CreateOrderRequest {
+  amount: number;
+  side: 'BUY' | 'SELL';
+  price: number;
+  caip10Token: string;
+  caip10Wallet: string;
+  symbol: string;
+  metadata?: Record<string, any>;
+  // Multi-chain fields
+  targetChainId?: number;
+  targetTokenAddress?: string;
+  targetTokenSymbol?: string;
+}
+
+export interface OrderBookResponse {
+  symbol: string;
+  bids: Array<{
+    price: number;
+    amount: number;
+    total: number;
+    chainInfo: {
+      source: { chainId: number; type: 'NATIVE' | 'OTHER' };
+      target: { chainId: number; type: 'NATIVE' | 'OTHER' } | null;
+    };
+    isCrossChain: boolean;
+    createdAt: string;
+  }>;
+  asks: Array<{
+    price: number;
+    amount: number;
+    total: number;
+    chainInfo: {
+      source: { chainId: number; type: 'NATIVE' | 'OTHER' };
+      target: { chainId: number; type: 'NATIVE' | 'OTHER' } | null;
+    };
+    isCrossChain: boolean;
+    createdAt: string;
+  }>;
+  bestBid: any;
+  bestAsk: any;
+  spread: number | null;
+  spreadPercentage: number | null;
+  timestamp: string;
+  includeCrossChain: boolean;
+}
+
+export interface AllOrdersResponse {
+  ordersBySymbol: Record<string, {
+    symbol: string;
+    bids: Array<{
+      price: number;
+      amount: number;
+      total: number;
+      chainInfo: {
+        source: { chainId: number; type: 'NATIVE' | 'OTHER' };
+        target: { chainId: number; type: 'NATIVE' | 'OTHER' } | null;
+      };
+      isCrossChain: boolean;
+      createdAt: string;
+      orderId: string;
+      ethAddress: string;
+      filledAmount: number;
+      status: string;
+    }>;
+    asks: Array<{
+      price: number;
+      amount: number;
+      total: number;
+      chainInfo: {
+        source: { chainId: number; type: 'NATIVE' | 'OTHER' };
+        target: { chainId: number; type: 'NATIVE' | 'OTHER' } | null;
+      };
+      isCrossChain: boolean;
+      createdAt: string;
+      orderId: string;
+      ethAddress: string;
+      filledAmount: number;
+      status: string;
+    }>;
+    totalOrders: number;
+  }>;
+  totalOrders: number;
+  symbols: string[];
+  timestamp: string;
+  includeCrossChain: boolean;
 }
 
 export interface Deposit {
@@ -158,22 +270,39 @@ export const useBackend = () => {
 
   // Order functions
   const getOrders = useCallback(async () => {
-    return sendRequest<any[]>('/orders', 'GET');
+    return sendRequest<Order[]>('/orders/my', 'GET');
+  }, [sendRequest]);
+
+  const getAllOrders = useCallback(async () => {
+    return sendRequest<Order[]>('/orders/all', 'GET');
   }, [sendRequest]);
 
   const createOrder = useCallback(
-    async (order: any) => {
-      return sendRequest<any>('/orders', 'POST', order);
+    async (order: CreateOrderRequest) => {
+      return sendRequest<Order>('/orders', 'POST', order);
     },
     [sendRequest]
   );
 
   const cancelOrder = useCallback(
     async (orderId: string) => {
-      return sendRequest<any>(`/orders/${orderId}`, 'DELETE');
+      return sendRequest<Order>(`/orders/${orderId}`, 'DELETE');
     },
     [sendRequest]
   );
+
+  const getOrderBook = useCallback(
+    async (symbol: string, limit?: number, includeCrossChain?: boolean) => {
+      const queryParams = new URLSearchParams();
+      if (limit) queryParams.append('limit', limit.toString());
+      if (includeCrossChain !== undefined) queryParams.append('includeCrossChain', includeCrossChain.toString());
+      
+      const endpoint = `/orders/orderbook/${symbol}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+      return sendRequest<OrderBookResponse>(endpoint, 'GET');
+    },
+    [sendRequest]
+  );
+
 
   // Deposit functions
   const getDeposits = useCallback(
@@ -217,6 +346,8 @@ export const useBackend = () => {
     getOrders,
     createOrder,
     cancelOrder,
+    getOrderBook,
+    getAllOrders,
     // Deposit functions
     getDeposits,
     getDepositById,

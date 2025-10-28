@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Delete } from 'lucide-react';
 
-import { useBackend } from '@/hooks/useBackend';
+import { useBackend, Order } from '@/hooks/useBackend';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,17 +18,19 @@ import {
 import { Box } from '@/components/ui/box';
 import { cn } from '@/lib/utils';
 
-interface Order {
-  _id: string;
-  amount: number;
-  side: 'BUY' | 'SELL';
-  price: number;
-  caip10Wallet: string;
-  symbol: string;
-  remainingAmount: number;
-  status: 'PENDING' | 'PARTIALLY_FILLED' | 'FILLED' | 'CANCELED';
-  createdAt: string;
-}
+const getChainName = (chainId: number): string => {
+  const chainNames: Record<number, string> = {
+    1: 'Ethereum',
+    84532: 'Base Sepolia',
+    11155111: 'Sepolia',
+    101: 'Solana',
+  };
+  return chainNames[chainId] || `Chain ${chainId}`;
+};
+
+const getChainTypeColor = (type: 'NATIVE' | 'OTHER'): string => {
+  return type === 'NATIVE' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800';
+};
 
 function renderOrdersTable(
   orders: Order[],
@@ -53,12 +55,15 @@ function renderOrdersTable(
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead>Token</TableHead>
+          <TableHead>Exchange</TableHead>
           <TableHead>Side</TableHead>
-          <TableHead>Price</TableHead>
+          <TableHead>Rate</TableHead>
           <TableHead>Amount</TableHead>
+          <TableHead>Filled</TableHead>
           <TableHead>Remaining</TableHead>
           <TableHead>Status</TableHead>
+          <TableHead>Chain</TableHead>
+          <TableHead>Type</TableHead>
           <TableHead className="text-right">Actions</TableHead>
         </TableRow>
       </TableHeader>
@@ -66,21 +71,55 @@ function renderOrdersTable(
       <TableBody>
         {orders.map((order) => {
           const active = order.status === 'PENDING' || order.status === 'PARTIALLY_FILLED';
+          const fillPercentage = (order.amount || 0) > 0 ? ((order.filledAmount || 0) / (order.amount || 1)) * 100 : 0;
+          
           return (
             <TableRow key={order._id}>
-              <TableCell className="font-medium">{order.symbol}</TableCell>
+              <TableCell className="font-medium">
+                <div className="flex flex-col">
+                  <span>{order.symbol}</span>
+                  {(order as any).metadata?.sourceAmount && (order as any).metadata?.targetAmount && (
+                    <span className="text-xs text-gray-500">
+                      {(order as any).metadata.sourceAmount} {(order as any).metadata.sourceToken} → {(order as any).metadata.targetAmount} {(order as any).metadata.targetToken}
+                    </span>
+                  )}
+                </div>
+              </TableCell>
               <TableCell>
                 <Badge className={order.side === 'BUY' ? 'bg-green-500' : 'bg-red-500'}>
                   {order.side}
                 </Badge>
               </TableCell>
-              <TableCell>{order.price.toFixed(4)}</TableCell>
-              <TableCell>{order.amount.toFixed(4)}</TableCell>
-              <TableCell>{order.remainingAmount.toFixed(4)}</TableCell>
+              <TableCell className="font-mono">{(order.price || 0).toFixed(6)}</TableCell>
+              <TableCell className="font-mono">{(order.amount || 0).toFixed(4)}</TableCell>
+              <TableCell className="font-mono">
+                <div className="flex flex-col">
+                  <span>{(order.filledAmount || 0).toFixed(4)}</span>
+                  <span className="text-xs text-gray-500">({fillPercentage.toFixed(1)}%)</span>
+                </div>
+              </TableCell>
+              <TableCell className="font-mono">{(order.remainingAmount || 0).toFixed(4)}</TableCell>
               <TableCell>
                 <span className={cn(active && 'text-green-500', !active && getStatusColor(order.status))}>
                   {order.status}
                 </span>
+              </TableCell>
+              <TableCell>
+                <div className="flex flex-col space-y-1">
+                  <Badge className={getChainTypeColor(order.sourceChainType || 'OTHER')}>
+                    {getChainName(order.sourceChainId || 84532)}
+                  </Badge>
+                  {order.targetChainId && (
+                    <Badge className={getChainTypeColor(order.targetChainType || 'OTHER')}>
+                      → {getChainName(order.targetChainId)}
+                    </Badge>
+                  )}
+                </div>
+              </TableCell>
+              <TableCell>
+                {order.isCrossChain && (
+                  <Badge className="bg-orange-100 text-orange-800">Cross-chain</Badge>
+                )}
               </TableCell>
               <TableCell>
                 <Box className="flex flex-row items-center justify-end gap-2 p-1">

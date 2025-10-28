@@ -18,7 +18,7 @@ import {
 import { userKey, VincentAuthenticatedRequest } from './types';
 import { env } from '../env';
 import { serviceLogger } from '../logger';
-import { handleCreateOrderRoute, handleGetOrderRoute, handleListOrdersRoute, handleCancelOrderRoute } from './orders';
+import { handleCreateOrderRoute, handleGetOrderRoute, handleCancelOrderRoute, handleGetOrderBookRoute, handleGetAllOrdersRoute, handleGetMyOrdersRoute } from './orders';
 import { handleListTradesRoute } from './trades';
 import { handleSyncUpRoute, handleGetBalanceRoute, handleDepositRoute, handleGetTokenBalanceRoute, handleGetMyBalanceRoute, handleGetMyDepositsRoute, handleGetDepositByIdRoute } from './trading';
 import { OrderCreateSchema, OrderIdentitySchema } from './schema';
@@ -117,8 +117,10 @@ export const registerRoutes = (app: Express) => {
     handler(handleDeleteScheduleRoute)
   );
 
+  // Simple order routes
   app.post('/orders', middleware, setSentryUserMiddleware, validateOrderCreate, handler(handleCreateOrderRoute));
-  app.get('/orders', middleware, setSentryUserMiddleware, handler(handleListOrdersRoute));
+  app.get('/orders/all', middleware, setSentryUserMiddleware, handler(handleGetAllOrdersRoute)); // All orders
+  app.get('/orders/my', middleware, setSentryUserMiddleware, handler(handleGetMyOrdersRoute)); // My orders
   app.get('/orders/:orderId', middleware, setSentryUserMiddleware, validateOrderId, handler(handleGetOrderRoute));
   app.delete('/orders/:orderId', middleware, setSentryUserMiddleware, validateOrderId, handler(handleCancelOrderRoute));
   app.get('/trades', middleware, setSentryUserMiddleware, handler(handleListTradesRoute));
