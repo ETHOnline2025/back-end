@@ -15,6 +15,10 @@ export interface ITrade extends Document {
   buyerEthAddress: string; // Extracted for easier querying
   sellerEthAddress: string; // Extracted for easier querying
   
+  // CAIP10 tokens for smart contract
+  buyerCaip10Token: string;
+  sellerCaip10Token: string;
+  
   // Token information
   symbol: string;
   tokenAddress: string; // Token being traded
@@ -68,6 +72,10 @@ export const TradeSchema = new Schema<ITrade>({
     match: /^0x[a-fA-F0-9]{40}$/,
     index: true 
   },
+  
+  // CAIP10 tokens for smart contract
+  buyerCaip10Token: { type: String, required: true, trim: true },
+  sellerCaip10Token: { type: String, required: true, trim: true },
   
   // Token information
   symbol: { type: String, required: true, uppercase: true, trim: true, index: true },

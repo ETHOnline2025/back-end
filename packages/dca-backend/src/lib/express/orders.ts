@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { ethers } from 'ethers';
 import { getPKPInfo } from '@lit-protocol/vincent-app-sdk/jwt';
+import { getCallContractWhitelistToolClient, getErc20ApprovalToolClient } from '../agenda/jobs/executeDCASwap/vincentAbilities';
 
 import { Order } from '../mongo/models/Order';
 import { Trade } from '../mongo/models/Trade';
@@ -58,55 +59,217 @@ async function getTradeBalance(caip10Wallet: string, caip10Token: string): Promi
   }
 }
 
+/**
+ * Execute the complete trade flow: deposit from both users → syncup → withdrawal
+ */
+const executeTradeFlow = async (trade: any, newOrder: any, existingOrder: any, fillAmount: number) => {
+  console.log(`Executing trade flow for trade ${trade._id} with amount ${fillAmount}`);
+  
+  try {
+    // Step 1: Deposit from both users to the trading contract
+    await Promise.all([
+      depositForUser(newOrder, fillAmount, trade),
+      depositForUser(existingOrder, fillAmount, trade)
+    ]);
+    
+    console.log(`Deposits completed for trade ${trade._id}`);
+    
+    // Step 2: Execute syncup to perform the actual swap
+    await executeSyncUp(trade, fillAmount);
+    
+    console.log(`SyncUp completed for trade ${trade._id}`);
+    
+    // Step 3: Update trade status to completed
+    trade.status = 'COMPLETED';
+    await trade.save();
+    
+    console.log(`Trade ${trade._id} completed successfully`);
+    
+  } catch (error) {
+    console.error(`Trade flow failed for trade ${trade._id}:`, error);
+    trade.status = 'FAILED';
+    await trade.save();
+    throw error;
+  }
+};
+
+/**
+ * Deposit tokens for a user to the trading contract using the existing deposit logic
+ */
+const depositForUser = async (order: any, amount: number, trade: any) => {
+  console.log(`Depositing ${amount} tokens for user ${order.ethAddress}`);
+  
+  // Determine the token address and amount based on order side
+  let tokenAddress: string;
+  let depositAmount: number;
+  
+  if (order.side === 'BUY') {
+    // Buyer needs to deposit the payment token (usually ETH or USDC)
+    tokenAddress = order.tokenAddress; // The token they're buying with
+    depositAmount = amount * order.price; // Total payment amount
+  } else {
+    // Seller needs to deposit the token they're selling
+    tokenAddress = order.tokenAddress;
+    depositAmount = amount; // Amount of tokens being sold
+  }
+  
+  // Use the existing deposit logic from trading.ts
+  // First, approve the Trading contract to spend tokens
+  const erc20ApprovalClient = getErc20ApprovalToolClient();
+  
+  const approvalResult = await erc20ApprovalClient.execute(
+    {
+      tokenAddress: tokenAddress,
+      spenderAddress: TRADING_CONTRACT_ADDRESS,
+      tokenAmount: depositAmount.toString(),
+      chainId: BASE_CHAIN_ID,
+      rpcUrl: BASE_RPC_URL,
+      alchemyGasSponsor: false, // Set to false for now, can be configured later
+    },
+    {
+      delegatorPkpEthAddress: order.ethAddress,
+    }
+  );
+
+  if (!approvalResult.success) {
+    throw new Error(`Approval failed for user ${order.ethAddress}: ${approvalResult.result?.error || 'Unknown error'}`);
+  }
+
+  // Now call the deposit function on the Trading contract
+  const caip10Wallet = `eip155:${BASE_CHAIN_ID}:${order.ethAddress}`;
+  const caip10Token = `eip155:${BASE_CHAIN_ID}:${tokenAddress}`;
+  
+  const callContractClient = getCallContractWhitelistToolClient();
+
+  const depositResult = await callContractClient.execute({
+    value: '0',
+    contractAddress: TRADING_CONTRACT_ADDRESS,
+    functionAbi: 'function deposit(string _caip10Token, string _caip10Wallet, uint256 _amount, uint8 _action, string _depositorWalletOrName)',
+    functionName: 'deposit',
+    functionArgs: [
+      caip10Token,
+      caip10Wallet,
+      depositAmount.toString(),
+      0, // Action: 0 = Native chain
+      order.ethAddress,
+    ],
+    functionArgsBase64: '',
+    appendToCallData: '',
+    chain: 'baseSepolia',
+    chainId: BASE_CHAIN_ID,
+    rpcUrl: BASE_RPC_URL,
+  }, {
+    delegatorPkpEthAddress: order.ethAddress,
+  });
+  
+  if (!depositResult.success) {
+    throw new Error(`Deposit failed for user ${order.ethAddress}: ${depositResult.result?.error || 'Unknown error'}`);
+  }
+  
+  console.log(`Deposit successful for user ${order.ethAddress}: ${depositResult.result?.txHash}`);
+  return depositResult;
+};
+
+/**
+ * Execute syncUp to perform the actual token swap
+ */
+const executeSyncUp = async (trade: any, fillAmount: number) => {
+  console.log(`Executing syncUp for trade ${trade._id}`);
+  
+  const callContractClient = getCallContractWhitelistToolClient();
+  
+  // Prepare syncUp arguments for both users using CAIP10 tokens
+  const syncUpArgs = [
+    // Debit seller (remove tokens they're selling)
+    {
+      caip10Wallet: trade.sellerCaip10Wallet,
+      caip10Token: trade.sellerCaip10Token || `eip155:${BASE_CHAIN_ID}:${trade.tokenAddress}`,
+      evmDepositorWallet: trade.sellerEthAddress,
+      newAmount: '0', // Seller's balance after selling
+    },
+    // Credit buyer (give them the tokens they're buying)
+    {
+      caip10Wallet: trade.buyerCaip10Wallet,
+      caip10Token: trade.buyerCaip10Token || `eip155:${BASE_CHAIN_ID}:${trade.tokenAddress}`,
+      evmDepositorWallet: trade.buyerEthAddress,
+      newAmount: fillAmount.toString(), // Buyer receives the tokens
+    }
+  ];
+  
+  // Encode function arguments as base64
+  const functionArgsBase64 = Buffer.from(JSON.stringify([syncUpArgs])).toString('base64');
+  
+  const result = await callContractClient.execute(
+    {
+      contractAddress: TRADING_CONTRACT_ADDRESS,
+      functionAbi: 'function syncUp((string caip10Wallet, string caip10Token, address evmDepositorWallet, uint256 newAmount)[] memory _data) external',
+      functionName: 'syncUp',
+      functionArgsBase64: functionArgsBase64,
+      chain: 'base',
+      chainId: BASE_CHAIN_ID,
+      rpcUrl: BASE_RPC_URL,
+    },
+    {
+      delegatorPkpEthAddress: trade.buyerEthAddress, // Use buyer as delegator
+    }
+  );
+  
+  if (!result.success) {
+    throw new Error(`SyncUp failed: ${result.result?.error || 'Unknown error'}`);
+  }
+  
+  console.log(`SyncUp successful for trade ${trade._id}: ${result.result?.txHash}`);
+  return result;
+};
+
 // Enhanced order matching function with cross-chain support
 const processOrderMatchingWithoutTransaction = async (newOrder: any): Promise<{ matchedAmount: number; trades: any[] }> => {
   let matchedAmount = 0;
   const trades: any[] = [];
   let remainingNewOrderAmount = newOrder.amount;
 
-  const oppositeSide = newOrder.side === 'BUY' ? 'SELL' : 'BUY';
-
-  // Find potential matching orders
-  const query: any = {
-    symbol: newOrder.symbol,
-    side: oppositeSide,
+  // Build matching query based on order type
+  let query: any = {
     status: 'PENDING', // Only match with PENDING orders
   };
 
+  console.log(`🔍 Matching order: ${newOrder.symbol} ${newOrder.side} @ ${newOrder.price}`);
+  console.log(`   Source Chain: ${newOrder.sourceChainId}, Target Chain: ${newOrder.targetChainId}`);
+  console.log(`   Is Cross Chain: ${newOrder.isCrossChain}`);
+
+  // Extract token address from CAIP10 token format
+  const newOrderTokenAddress = extractTokenAddressFromCaip10(newOrder.caip10Token);
+  const newOrderChainId = getChainIdFromCaip10(newOrder.caip10Wallet);
+  
+  // Simple matching: different chains, compatible prices
+  query.sourceChainId = { $ne: newOrderChainId }; // Different chain
+  
+  // Price matching: find orders with compatible prices
   if (newOrder.side === 'BUY') {
-    // For a BUY order, find SELL orders with price <= newOrder.price (lowest ask first)
+    // For BUY orders, find orders that can provide tokens at acceptable price
     query.price = { $lte: newOrder.price };
   } else {
-    // For a SELL order, find BUY orders with price >= newOrder.price (highest bid first)
+    // For SELL orders, find orders willing to buy at acceptable price
     query.price = { $gte: newOrder.price };
   }
-
-  // Cross-chain matching logic
-  if (newOrder.isCrossChain) {
-    // For cross-chain orders, we need to match with orders that can fulfill the cross-chain requirement
-    // This is a simplified version - in production, you'd have more complex matching logic
-    query.isCrossChain = true;
-    
-    // Match orders that can provide tokens on the target chain
-    if (newOrder.targetChainId) {
-      query.$or = [
-        { targetChainId: newOrder.targetChainId },
-        { sourceChainId: newOrder.targetChainId }
-      ];
-    }
-  } else {
-    // For same-chain orders, prefer same-chain matches
-    query.isCrossChain = false;
-  }
+  
+  console.log(`🔄 CAIP10 matching: token ${newOrder.tokenSymbol} (${newOrderTokenAddress}), chain ${newOrderChainId}`);
+  console.log(`   CAIP10 Token: ${newOrder.caip10Token}`);
+  console.log(`   CAIP10 Wallet: ${newOrder.caip10Wallet}`);
+  console.log(`   Token Symbol: "${newOrder.tokenSymbol}"`);
 
   // Find potential matches, sorted by price and time priority
   const sortOrder = newOrder.side === 'BUY' 
     ? { price: 1 as const, createdAt: 1 as const } // Ascending price, then oldest first
     : { price: -1 as const, createdAt: 1 as const }; // Descending price, then oldest first
 
+  console.log(`📋 Matching query:`, JSON.stringify(query, null, 2));
+  
   const potentialMatches = await Order.find(query)
     .sort(sortOrder)
     .lean();
+    
+  console.log(`🎯 Found ${potentialMatches.length} potential matches`);
 
   for (const existingOrderDoc of potentialMatches) {
     if (remainingNewOrderAmount <= 0) {
@@ -137,20 +300,46 @@ const processOrderMatchingWithoutTransaction = async (newOrder: any): Promise<{ 
       // Determine if this is a cross-chain trade
       const isCrossChainTrade = newOrder.isCrossChain || existingOrder.isCrossChain;
       
+      // For cross-chain trades, determine buyer/seller based on chain flow
+      let buyerOrder, sellerOrder;
+      if (isCrossChainTrade) {
+        // For cross-chain: buyer is the one receiving tokens on their target chain
+        // seller is the one providing tokens from their source chain
+        if (newOrder.targetChainId && existingOrder.sourceChainId === newOrder.targetChainId) {
+          buyerOrder = newOrder;
+          sellerOrder = existingOrder;
+        } else if (existingOrder.targetChainId && newOrder.sourceChainId === existingOrder.targetChainId) {
+          buyerOrder = existingOrder;
+          sellerOrder = newOrder;
+        } else {
+          // Fallback to traditional side-based matching
+          buyerOrder = newOrder.side === 'BUY' ? newOrder : existingOrder;
+          sellerOrder = newOrder.side === 'SELL' ? newOrder : existingOrder;
+        }
+      } else {
+        // Traditional same-chain matching
+        buyerOrder = newOrder.side === 'BUY' ? newOrder : existingOrder;
+        sellerOrder = newOrder.side === 'SELL' ? newOrder : existingOrder;
+      }
+      
       // Record the trade with enhanced information
       const trade = new Trade({
-        buyOrderId: newOrder.side === 'BUY' ? newOrder._id : existingOrder._id,
-        sellOrderId: newOrder.side === 'SELL' ? newOrder._id : existingOrder._id,
+        buyOrderId: buyerOrder._id,
+        sellOrderId: sellerOrder._id,
         price: existingOrder.price,
         amount: fillAmount,
         fillPrice: existingOrder.price,
         totalValue: fillAmount * existingOrder.price,
         
         // User information
-        buyerCaip10Wallet: newOrder.side === 'BUY' ? newOrder.caip10Wallet : existingOrder.caip10Wallet,
-        sellerCaip10Wallet: newOrder.side === 'SELL' ? newOrder.caip10Wallet : existingOrder.caip10Wallet,
-        buyerEthAddress: newOrder.side === 'BUY' ? newOrder.ethAddress : existingOrder.ethAddress,
-        sellerEthAddress: newOrder.side === 'SELL' ? newOrder.caip10Wallet : existingOrder.caip10Wallet,
+        buyerCaip10Wallet: buyerOrder.caip10Wallet,
+        sellerCaip10Wallet: sellerOrder.caip10Wallet,
+        buyerEthAddress: buyerOrder.ethAddress,
+        sellerEthAddress: sellerOrder.ethAddress,
+        
+        // CAIP10 tokens for smart contract
+        buyerCaip10Token: buyerOrder.caip10Token,
+        sellerCaip10Token: sellerOrder.caip10Token,
         
         // Token information
         symbol: newOrder.symbol,
@@ -175,12 +364,16 @@ const processOrderMatchingWithoutTransaction = async (newOrder: any): Promise<{ 
 
       console.log(`Matched ${fillAmount} of new order (${newOrder._id}) with existing order (${existingOrder._id}). Cross-chain: ${isCrossChainTrade}`);
       
-      // TODO: Trigger Vincent to execute the actual swap
-      // This would involve:
-      // 1. Vincent deposits required assets to smart contract
-      // 2. Smart contract performs the swap
-      // 3. Vincent returns exchanged assets to users
-      // 4. Update trade status to 'COMPLETED'
+      // Execute the complete trade flow: deposit → syncup → withdrawal
+      try {
+        await executeTradeFlow(trade, newOrder, existingOrder, fillAmount);
+        console.log(`Successfully executed trade flow for trade ${trade._id}`);
+      } catch (tradeError) {
+        console.error(`Failed to execute trade flow for trade ${trade._id}:`, tradeError);
+        // Update trade status to failed
+        trade.status = 'FAILED';
+        await trade.save();
+      }
     }
   }
 
