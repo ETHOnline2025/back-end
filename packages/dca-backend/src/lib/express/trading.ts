@@ -1,10 +1,13 @@
 import { Request, Response } from 'express';
 import { ethers } from 'ethers';
-import { getCallContractWhitelistToolClient } from '../agenda/jobs/executeDCASwap/vincentAbilities';
+import { getPKPInfo } from '@lit-protocol/vincent-app-sdk/jwt';
+import { getErc20ApprovalToolClient } from '../agenda/jobs/executeDCASwap/vincentAbilities';
+import { VincentAuthenticatedRequest } from './types';
+import { env } from '../env';
 
 const TRADING_CONTRACT_ADDRESS = '0x0b4Aec45bB5F3F70cC6Cdb9771C850fF20D812A4';
 const BASE_CHAIN_ID = 84532;
-const BASE_RPC_URL = process.env.BASE_RPC_URL || 'https://sepolia.base.org';
+const BASE_RPC_URL = 'https://sepolia.base.org'; // Force Sepolia
 
 /**
  * Test endpoint to call Trading contract's syncUp function
@@ -101,6 +104,111 @@ export const handleGetBalanceRoute = async (req: Request, res: Response) => {
     console.error('Error getting balance:', error);
     res.status(500).json({
       error: 'Failed to get trade balance',
+      success: false,
+      details: error.message,
+    });
+  }
+};
+
+/**
+ * Get ERC20 token balance
+ * GET /api/trading/token-balance
+ */
+export const handleGetTokenBalanceRoute = async (req: Request, res: Response) => {
+  try {
+    const { tokenAddress, walletAddress } = req.query;
+
+    if (!tokenAddress || !walletAddress) {
+      return res.status(400).json({
+        error: 'Missing required parameters',
+        success: false,
+        required: ['tokenAddress', 'walletAddress'],
+      });
+    }
+
+    const provider = new ethers.providers.JsonRpcProvider(BASE_RPC_URL);
+    const erc20ABI = ['function balanceOf(address owner) view returns (uint256)'];
+    const tokenContract = new ethers.Contract(tokenAddress as string, erc20ABI, provider);
+    
+    const balance = await tokenContract.balanceOf(walletAddress as string);
+
+    res.json({
+      success: true,
+      tokenAddress,
+      walletAddress,
+      balance: balance.toString(),
+    });
+  } catch (error: any) {
+    console.error('Error getting token balance:', error);
+    res.status(500).json({
+      error: 'Failed to get token balance',
+      success: false,
+      details: error.message,
+    });
+  }
+};
+
+/**
+ * Deposit tokens to the Trading contract
+ * POST /api/trading/deposit
+ */
+export const handleDepositRoute = async (req: VincentAuthenticatedRequest, res: Response) => {
+  try {
+    const { tokenAddress, amount } = req.body;
+
+    if (!tokenAddress || !amount) {
+      return res.status(400).json({
+        error: 'Missing required parameters',
+        success: false,
+        required: ['tokenAddress', 'amount'],
+      });
+    }
+
+    // Get ethAddress from JWT
+    const pkpInfo = await getPKPInfo(req.user.decodedJWT);
+    const delegatorEthAddress = pkpInfo.ethAddress;
+
+    // First, approve the Trading contract to spend tokens
+    const erc20ApprovalClient = getErc20ApprovalToolClient();
+    
+    const approvalResult = await erc20ApprovalClient.execute(
+      {
+        tokenAddress: tokenAddress,
+        spenderAddress: TRADING_CONTRACT_ADDRESS,
+        tokenAmount: amount.toString(),
+        chainId: BASE_CHAIN_ID,
+        rpcUrl: BASE_RPC_URL,
+        alchemyGasSponsor: !!env.ALCHEMY_API_KEY,
+        alchemyGasSponsorApiKey: env.ALCHEMY_API_KEY,
+        alchemyGasSponsorPolicyId: env.ALCHEMY_POLICY_ID,
+      },
+      {
+        delegatorPkpEthAddress: delegatorEthAddress,
+      }
+    );
+
+    if (!approvalResult.success) {
+      return res.status(500).json({
+        error: 'Failed to approve token transfer',
+        success: false,
+        details: approvalResult.error,
+      });
+    }
+
+    // Return success - the user still needs to call deposit() on the Trading contract
+    // This is a two-step process:
+    // 1. Approve Trading contract (this endpoint)
+    // 2. Call deposit() on Trading contract (user does this via frontend or another endpoint)
+    res.json({
+      success: true,
+      message: 'Token approval successful. Please call deposit() on the Trading contract.',
+      approvalTxHash: approvalResult.txHash,
+      data: { tokenAddress, amount },
+    });
+  } catch (error: any) {
+    console.error('Error depositing:', error);
+    res.status(500).json({
+      error: 'Failed to deposit tokens',
       success: false,
       details: error.message,
     });
