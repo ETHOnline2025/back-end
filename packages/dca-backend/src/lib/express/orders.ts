@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { ethers } from 'ethers';
 import { getPKPInfo } from '@lit-protocol/vincent-app-sdk/jwt';
-import { executeSyncUpTransaction, createSyncUpData } from '../agenda/jobs/executeDCASwap/utils/signer';
+import { executeSyncUpTransaction, createSyncUpData, executeDepositTransaction } from '../agenda/jobs/executeDCASwap/utils/signer';
 
 import { Order } from '../mongo/models/Order';
 import { Trade } from '../mongo/models/Trade';
@@ -126,73 +126,50 @@ const depositForUser = async (order: any, amount: number, trade: any) => {
   // Determine the token address and amount based on order side
   let tokenAddress: string;
   let depositAmount: string;
+  let chainId: number;
   
   if (order.side === 'BUY') {
     // Buyer needs to deposit the payment token (usually ETH or USDC)
     tokenAddress = order.tokenAddress; // The token they're buying with
     const totalAmount = amount * order.price; // Total payment amount
     depositAmount = convertToTokenUnits(totalAmount, order.tokenSymbol || 'USDC');
+    chainId = order.sourceChainId;
   } else {
     // Seller needs to deposit the token they're selling
     tokenAddress = order.tokenAddress;
     depositAmount = convertToTokenUnits(amount, order.tokenSymbol || 'USDC'); // Amount of tokens being sold
+    chainId = order.sourceChainId;
   }
   
-  // Use the existing deposit logic from trading.ts
-  // First, approve the Trading contract to spend tokens
-  const erc20ApprovalClient = getErc20ApprovalToolClient();
+  // Create CAIP10 identifiers
+  const caip10Wallet = `eip155:${chainId}:${order.ethAddress}`;
+  const caip10Token = `eip155:${chainId}:${tokenAddress}`;
   
-  const approvalResult = await erc20ApprovalClient.execute(
-    {
-      tokenAddress: tokenAddress,
-      spenderAddress: TRADING_CONTRACT_ADDRESS,
-      tokenAmount: depositAmount,
-      chainId: BASE_CHAIN_ID,
-      rpcUrl: BASE_RPC_URL,
-      alchemyGasSponsor: false, // Set to false for now, can be configured later
-    },
-    {
-      delegatorPkpEthAddress: order.ethAddress,
-    }
-  );
-
-  if (!approvalResult.success) {
-    throw new Error(`Approval failed for user ${order.ethAddress}: ${approvalResult.result?.error || 'Unknown error'}`);
-  }
-
-  // Now call the deposit function on the Trading contract
-  const caip10Wallet = `eip155:${BASE_CHAIN_ID}:${order.ethAddress}`;
-  const caip10Token = `eip155:${BASE_CHAIN_ID}:${tokenAddress}`;
+  console.log(`Deposit details:`, {
+    caip10Wallet,
+    caip10Token,
+    depositAmount,
+    chainId,
+    ethAddress: order.ethAddress
+  });
   
-  const callContractClient = getCallContractWhitelistToolClient();
-
-  const depositResult = await callContractClient.execute({
-    value: '0',
-    contractAddress: TRADING_CONTRACT_ADDRESS,
-    functionAbi: 'function deposit(string _caip10Token, string _caip10Wallet, uint256 _amount, uint8 _action, string _depositorWalletOrName)',
-    functionName: 'deposit',
-    functionArgs: [
+  try {
+    // Use direct transaction approach
+    const txHash = await executeDepositTransaction(
       caip10Token,
       caip10Wallet,
       depositAmount,
       0, // Action: 0 = Native chain
-      order.ethAddress,
-    ],
-    functionArgsBase64: '',
-    appendToCallData: '',
-    chain: 'baseSepolia',
-    chainId: BASE_CHAIN_ID,
-    rpcUrl: BASE_RPC_URL,
-  }, {
-    delegatorPkpEthAddress: order.ethAddress,
-  });
-  
-  if (!depositResult.success) {
-    throw new Error(`Deposit failed for user ${order.ethAddress}: ${depositResult.result?.error || 'Unknown error'}`);
+      order.ethAddress
+    );
+    
+    console.log(`Deposit successful for user ${order.ethAddress}: ${txHash}`);
+    return { success: true, txHash };
+    
+  } catch (error) {
+    console.error(`Deposit failed for user ${order.ethAddress}:`, error);
+    throw new Error(`Deposit failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-  
-  console.log(`Deposit successful for user ${order.ethAddress}: ${depositResult.result?.txHash}`);
-  return depositResult;
 };
 
 /**
