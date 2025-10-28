@@ -45,10 +45,47 @@ export const CreateOrder: React.FC<CreateOrderProps> = ({ onCreate }) => {
         'UNI': { address: '0x1f9840a85d5af5bf1d1762fcd6407d85fd2df3ef', decimals: 18 },
         'WETH': { address: '0x4200000000000000000000000000000000000006', decimals: 18 },
         'DAI': { address: '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb', decimals: 18 },
+      },
+      '1': { // Ethereum Mainnet (mock)
+        'USDC': { address: '0xA0b86a33E6441b8C4C8C0E4A8c5A8F1A8c5A8F1A', decimals: 6 },
+        'UNI': { address: '0x1f9840a85d5af5bf1d1762fcd6407d85fd2df3ef', decimals: 18 },
+        'WETH': { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', decimals: 18 },
+        'DAI': { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18 },
+      },
+      '11155111': { // Sepolia (mock)
+        'USDC': { address: '0x1c7d4b196cb0c7b01d743fbc6116a902379c7238', decimals: 6 },
+        'UNI': { address: '0x1f9840a85d5af5bf1d1762fcd6407d85fd2df3ef', decimals: 18 },
+        'WETH': { address: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14', decimals: 18 },
+        'DAI': { address: '0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357', decimals: 18 },
+      },
+      '101': { // Solana (mock)
+        'USDC': { address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6 },
+        'SOL': { address: 'So11111111111111111111111111111111111111112', decimals: 9 },
+        'RAY': { address: '4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R', decimals: 6 },
+        'SRM': { address: 'SRMuApVNdxXokk5GT7XD5cUUgXMBCoAz2LHeuAoKWRt', decimals: 6 },
+      },
+      '137': { // Polygon (mock)
+        'USDC': { address: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', decimals: 6 },
+        'UNI': { address: '0xb33EaAd8d922B1083446DC23f610c2567fB5180f', decimals: 18 },
+        'WETH': { address: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', decimals: 18 },
+        'DAI': { address: '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063', decimals: 18 },
       }
     };
     return configs[chainId] || configs['84532']; // Default to Base Sepolia
   };
+
+  // Reset token selection when chain changes
+  useEffect(() => {
+    const sourceTokens = Object.keys(getTokenConfig(sourceChain));
+    const targetTokens = Object.keys(getTokenConfig(targetChain));
+    
+    if (!sourceTokens.includes(sourceToken)) {
+      setSourceToken(sourceTokens[0] || 'USDC');
+    }
+    if (!targetTokens.includes(targetToken)) {
+      setTargetToken(targetTokens[0] || 'USDC');
+    }
+  }, [sourceChain, targetChain, sourceToken, targetToken]);
 
   const calculateRatio = () => {
     const source = parseFloat(sourceAmount);
@@ -257,10 +294,9 @@ export const CreateOrder: React.FC<CreateOrderProps> = ({ onCreate }) => {
                   <SelectValue placeholder="Select token" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="EURC">EURC</SelectItem>
-                  <SelectItem value="USDC">USDC</SelectItem>
-                  <SelectItem value="WETH">WETH</SelectItem>
-                  <SelectItem value="DAI">DAI</SelectItem>
+                  {Object.keys(getTokenConfig(sourceChain)).map(token => (
+                    <SelectItem key={token} value={token}>{token}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -272,6 +308,10 @@ export const CreateOrder: React.FC<CreateOrderProps> = ({ onCreate }) => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="84532">Base Sepolia</SelectItem>
+                  <SelectItem value="1">Ethereum</SelectItem>
+                  <SelectItem value="11155111">Sepolia</SelectItem>
+                  <SelectItem value="137">Polygon</SelectItem>
+                  <SelectItem value="101">Solana</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -325,10 +365,9 @@ export const CreateOrder: React.FC<CreateOrderProps> = ({ onCreate }) => {
                   <SelectValue placeholder="Select token" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="EURC">EURC</SelectItem>
-                  <SelectItem value="USDC">USDC</SelectItem>
-                  <SelectItem value="WETH">WETH</SelectItem>
-                  <SelectItem value="DAI">DAI</SelectItem>
+                  {Object.keys(getTokenConfig(targetChain)).map(token => (
+                    <SelectItem key={token} value={token}>{token}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -340,6 +379,10 @@ export const CreateOrder: React.FC<CreateOrderProps> = ({ onCreate }) => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="84532">Base Sepolia</SelectItem>
+                  <SelectItem value="1">Ethereum</SelectItem>
+                  <SelectItem value="11155111">Sepolia</SelectItem>
+                  <SelectItem value="137">Polygon</SelectItem>
+                  <SelectItem value="101">Solana</SelectItem>
                 </SelectContent>
               </Select>
             </div>

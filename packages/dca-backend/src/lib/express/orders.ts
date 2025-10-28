@@ -266,8 +266,17 @@ const processOrderMatchingWithoutTransaction = async (newOrder: any): Promise<{ 
   const newOrderTokenAddress = extractTokenAddressFromCaip10(newOrder.caip10Token);
   const newOrderChainId = getChainIdFromCaip10(newOrder.caip10Wallet);
   
-  // Simple matching: different chains, compatible prices
-  query.sourceChainId = { $ne: newOrderChainId }; // Different chain
+  // Matching logic: support both cross-chain and same-chain swaps
+  if (newOrder.isCrossChain) {
+    // Cross-chain matching: different chains, compatible prices
+    query.sourceChainId = { $ne: newOrderChainId }; // Different chain
+    console.log(`🌐 Cross-chain matching: looking for orders on different chains`);
+  } else {
+    // Same-chain matching: same chain, opposite sides, compatible prices
+    query.sourceChainId = newOrderChainId; // Same chain
+    query.side = { $ne: newOrder.side }; // Opposite side (BUY vs SELL)
+    console.log(`🔄 Same-chain matching: looking for ${newOrder.side === 'BUY' ? 'SELL' : 'BUY'} orders on same chain`);
+  }
   
   // Price matching: find orders with compatible prices
   if (newOrder.side === 'BUY') {
