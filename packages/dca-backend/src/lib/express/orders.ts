@@ -123,16 +123,17 @@ const depositForUser = async (order: any, amount: number, trade: any) => {
   
   // Determine the token address and amount based on order side
   let tokenAddress: string;
-  let depositAmount: number;
+  let depositAmount: string;
   
   if (order.side === 'BUY') {
     // Buyer needs to deposit the payment token (usually ETH or USDC)
     tokenAddress = order.tokenAddress; // The token they're buying with
-    depositAmount = amount * order.price; // Total payment amount
+    const totalAmount = amount * order.price; // Total payment amount
+    depositAmount = convertToTokenUnits(totalAmount, order.tokenSymbol || 'USDC');
   } else {
     // Seller needs to deposit the token they're selling
     tokenAddress = order.tokenAddress;
-    depositAmount = amount; // Amount of tokens being sold
+    depositAmount = convertToTokenUnits(amount, order.tokenSymbol || 'USDC'); // Amount of tokens being sold
   }
   
   // Use the existing deposit logic from trading.ts
@@ -143,7 +144,7 @@ const depositForUser = async (order: any, amount: number, trade: any) => {
     {
       tokenAddress: tokenAddress,
       spenderAddress: TRADING_CONTRACT_ADDRESS,
-      tokenAmount: depositAmount.toString(),
+      tokenAmount: depositAmount,
       chainId: BASE_CHAIN_ID,
       rpcUrl: BASE_RPC_URL,
       alchemyGasSponsor: false, // Set to false for now, can be configured later
@@ -171,7 +172,7 @@ const depositForUser = async (order: any, amount: number, trade: any) => {
     functionArgs: [
       caip10Token,
       caip10Wallet,
-      depositAmount.toString(),
+      depositAmount,
       0, // Action: 0 = Native chain
       order.ethAddress,
     ],
