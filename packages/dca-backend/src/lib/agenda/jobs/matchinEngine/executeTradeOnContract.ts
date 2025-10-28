@@ -1,32 +1,19 @@
 import { ethers } from 'ethers';
 import { ITrade } from '../../../mongo/models/Trade';
+import { getCallContractWhitelistToolClient } from '../executeDCASwap/vincentAbilities';
 
 // Trading contract address on Base Sepolia
-const TRADING_CONTRACT_ADDRESS = '0x3dfB03600550F59bEffb8980c133a8E533761eDF';
+const TRADING_CONTRACT_ADDRESS = '0x0b4aec45bb5f3f70cc6cdb9771c850ff20d812a4';
 const BASE_RPC_URL = process.env.BASE_RPC_URL || 'https://sepolia.base.org';
 const BASE_CHAIN_ID = 84532;
 
-// ABI for the Trading contract's syncUp function
-const TRADING_ABI = [
-  'function syncUp((string caip10Wallet, string caip10Token, address evmDepositorWallet, uint256 newAmount)[] memory _data)',
-];
-
 /**
- * Executes a matched trade on the Trading contract by syncing balances
+ * Executes a matched trade on the Trading contract by syncing balances using Vincent abilities
  * @param trade The matched trade to execute
+ * @param delegatorAddress The address of the delegator executing the trade
  * @returns Promise with transaction hash
  */
-export async function executeTradeOnContract(trade: ITrade): Promise<string> {
-  // Create provider for Base Sepolia
-  const provider = new ethers.providers.JsonRpcProvider(BASE_RPC_URL);
-  
-  // Create contract instance
-  const tradingContract = new ethers.Contract(
-    TRADING_CONTRACT_ADDRESS,
-    TRADING_ABI,
-    provider
-  );
-
+export async function executeTradeOnContract(trade: ITrade, delegatorAddress: string): Promise<string> {
   // Prepare syncUp arguments
   // For a trade, we need to:
   // 1. Debit the seller's balance (reduce by amount * price)
@@ -41,7 +28,7 @@ export async function executeTradeOnContract(trade: ITrade): Promise<string> {
   // Parse symbol to get token addresses
   const [tokenInSymbol, tokenOutSymbol] = trade.symbol.split('/');
   
-  // Get actual token addresses (you'll need to update these with real token addresses)
+  // Get actual token addresses
   const tokenInAddress = getTokenAddress(tokenInSymbol);
   const tokenOutAddress = getTokenAddress(tokenOutSymbol);
 
@@ -69,45 +56,47 @@ export async function executeTradeOnContract(trade: ITrade): Promise<string> {
     newAmount: tokenInAmount.toString(), // Buyer receives the tokens
   });
 
-  // Simulate or execute the transaction
-  // Note: This requires admin access to call syncUp
-  const tx = await tradingContract.syncUp(syncUpArgs);
+  // Execute the transaction using Vincent abilities
+  const callContractClient = getCallContractWhitelistToolClient();
   
-  console.log('Trade executed on contract:', tx.hash);
+  // Encode function arguments as base64
+  const functionArgsBase64 = Buffer.from(JSON.stringify([syncUpArgs])).toString('base64');
   
-  return tx.hash;
+  const result = await callContractClient.execute(
+    {
+      contractAddress: TRADING_CONTRACT_ADDRESS,
+      functionAbi: 'function syncUp((string caip10Wallet, string caip10Token, address evmDepositorWallet, uint256 newAmount)[] memory _data) external',
+      functionName: 'syncUp',
+      functionArgsBase64: functionArgsBase64,
+      chain: 'base',
+      chainId: BASE_CHAIN_ID,
+      rpcUrl: BASE_RPC_URL,
+    },
+    {
+      delegatorPkpEthAddress: delegatorAddress,
+    }
+  );
+
+  if (!result.success) {
+    throw new Error(`Trade execution failed: ${result.error}`);
+  }
+  
+  console.log('Trade executed on contract via Vincent:', result);
+  
+  return result;
 }
 
 /**
- * Example usage for calling Trading contract functions
- * Uses callContractWhitelist Vincent ability to execute any contract function
+ * Legacy function - now replaced by executeTradeOnContract which uses Vincent abilities
+ * @deprecated Use executeTradeOnContract instead
  */
 export async function executeTradeViaVincent(
   trade: ITrade,
   delegatorAddress: string,
   functionName: string = 'syncUp'
 ): Promise<string> {
-  // This would be called from a job that has Vincent permissions
-  // You would use getCallContractWhitelistToolClient() to execute this
-  
-  // Example parameters for callContractWhitelist:
-  const contractCallParams = {
-    contractAddress: TRADING_CONTRACT_ADDRESS,
-    functionAbi: 'function syncUp((string caip10Wallet, string caip10Token, address evmDepositorWallet, uint256 newAmount)[] memory _data) external',
-    functionName: functionName,
-    functionArgs: [], // Would need to construct the syncUpArgs array
-    chain: 'base',
-    chainId: BASE_CHAIN_ID,
-    rpcUrl: BASE_RPC_URL,
-  };
-
-  // This would be executed through Vincent:
-  // const client = getCallContractWhitelistToolClient();
-  // const result = await client.call(...);
-  
-  console.log('Would execute:', contractCallParams);
-  
-  return 'pending';
+  console.warn('executeTradeViaVincent is deprecated. Use executeTradeOnContract instead.');
+  return executeTradeOnContract(trade, delegatorAddress);
 }
 
 /**

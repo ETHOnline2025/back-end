@@ -1,10 +1,35 @@
 import { Response } from 'express';
+import { ethers } from 'ethers';
 import { getPKPInfo } from '@lit-protocol/vincent-app-sdk/jwt';
 
 import { Order } from '../mongo/models/Order';
 import { Trade } from '../mongo/models/Trade';
 import { VincentAuthenticatedRequest } from './types';
 // import mongoose from 'mongoose';
+
+const TRADING_CONTRACT_ADDRESS = '0x0b4aec45bb5f3f70cc6cdb9771c850ff20d812a4';
+const BASE_RPC_URL = 'https://sepolia.base.org';
+const BASE_CHAIN_ID = 84532;
+
+/**
+ * Get trade balance from the Trading contract
+ */
+async function getTradeBalance(caip10Wallet: string, caip10Token: string): Promise<number> {
+  try {
+    const provider = new ethers.providers.JsonRpcProvider(BASE_RPC_URL);
+    const tradingContract = new ethers.Contract(
+      TRADING_CONTRACT_ADDRESS,
+      ['function getTradeBalance(string memory _caip10Wallet, string memory _caip10Token) external view returns (uint256)'],
+      provider
+    );
+    
+    const balance = await tradingContract.getTradeBalance(caip10Wallet, caip10Token);
+    return parseFloat(ethers.utils.formatEther(balance)); // Convert from wei (assuming 18 decimals)
+  } catch (error) {
+    console.error('Error getting trade balance:', error);
+    return 0;
+  }
+}
 
 // Simplified order matching function without transactions
 const processOrderMatchingWithoutTransaction = async (newOrder: any): Promise<{ matchedAmount: number; trades: any[] }> => {
@@ -113,6 +138,23 @@ export const handleCreateOrderRoute = async (req: VincentAuthenticatedRequest, r
   const { amount, side, price, caip10Token, caip10Wallet, symbol, metadata } = req.body;
 
   try {
+    // Check user's balance on the Trading contract
+    const balance = await getTradeBalance(caip10Wallet, caip10Token);
+    
+    // Calculate required balance
+    // For BUY orders: need amount * price worth of token (e.g., USDC)
+    // For SELL orders: need amount worth of the token being sold
+    const requiredBalance = side === 'BUY' ? amount * price : amount;
+    
+    if (balance < requiredBalance) {
+      return res.status(400).json({
+        error: 'Insufficient balance on Trading contract',
+        success: false,
+        balance,
+        requiredBalance,
+      });
+    }
+
     let newOrder = new Order({
       amount,
       side,
