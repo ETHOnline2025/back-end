@@ -6,6 +6,7 @@ import { getErc20ApprovalToolClient, getCallContractWhitelistToolClient } from '
 import { VincentAuthenticatedRequest } from './types';
 import { env } from '../env';
 import { Interface } from 'ethers/lib/utils';
+import { Deposit } from '../mongo/models/Deposit';
 
 
 const TRADING_CONTRACT_ADDRESS = '0x0b4aec45bb5f3f70cc6cdb9771c850ff20d812a4';
@@ -26,6 +27,26 @@ enum ChainType {
  */
 const getActionForChain = (chainType: ChainType): number => {
   return chainType;
+};
+
+/**
+ * Extract ETH address from CAIP10 wallet format
+ * @param caip10Wallet - CAIP10 wallet format (eip155:CHAIN_ID:ADDRESS)
+ * @returns ETH address
+ */
+const extractAddressFromCaip10 = (caip10Wallet: string): string => {
+  const parts = caip10Wallet.split(':');
+  return parts[2] || caip10Wallet;
+};
+
+/**
+ * Extract token address from CAIP10 token format
+ * @param caip10Token - CAIP10 token format (eip155:CHAIN_ID:TOKEN_ADDRESS)
+ * @returns Token address
+ */
+const extractTokenAddressFromCaip10 = (caip10Token: string): string => {
+  const parts = caip10Token.split(':');
+  return parts[2] || caip10Token;
 };
 
 /**
@@ -335,6 +356,29 @@ export const handleDepositRoute = async (req: VincentAuthenticatedRequest, res: 
     });
 
     if (!depositResult.success) {
+      // Save failed deposit record
+      try {
+        await Deposit.create({
+          caip10Wallet,
+          ethAddress: delegatorEthAddress,
+          caip10Token,
+          tokenAddress: extractTokenAddressFromCaip10(caip10Token),
+          amount: amount.toString(),
+          action,
+          chainType: targetChainType === ChainType.NATIVE ? 'NATIVE' : 'OTHER',
+          status: 'FAILED',
+          contractAddress: TRADING_CONTRACT_ADDRESS,
+          chainId: BASE_CHAIN_ID,
+          metadata: {
+            error: depositResult.result?.error || 'Unknown error',
+            approvalResult: approvalResult.success ? 'SUCCESS' : 'FAILED'
+          }
+        });
+      } catch (dbError) {
+        // Log database error but don't fail the response
+        console.error('Failed to save deposit record:', dbError);
+      }
+
       return res.status(500).json({
         error: 'Failed to deposit tokens',
         success: false,
@@ -342,11 +386,164 @@ export const handleDepositRoute = async (req: VincentAuthenticatedRequest, res: 
       });
     }
 
-    res.json(depositResult.result);
+    // Save successful deposit record
+    try {
+      const depositRecord = await Deposit.create({
+        caip10Wallet,
+        ethAddress: delegatorEthAddress,
+        caip10Token,
+        tokenAddress: extractTokenAddressFromCaip10(caip10Token),
+        amount: amount.toString(),
+        action,
+        chainType: targetChainType === ChainType.NATIVE ? 'NATIVE' : 'OTHER',
+        status: 'CONFIRMED',
+        contractAddress: TRADING_CONTRACT_ADDRESS,
+        chainId: BASE_CHAIN_ID,
+        txHash: depositResult.result?.txHash,
+        metadata: {
+          approvalTxHash: approvalResult.result?.approvalTxHash,
+          functionArgs: {
+            caip10Token,
+            caip10Wallet,
+            amount: amount.toString(),
+            action,
+            depositorWallet
+          }
+        }
+      });
+
+      res.json({
+        ...depositResult.result,
+        depositId: depositRecord._id,
+        depositRecord: {
+          id: depositRecord._id,
+          status: depositRecord.status,
+          amount: depositRecord.amount,
+          chainType: depositRecord.chainType,
+          createdAt: depositRecord.createdAt
+        }
+      });
+    } catch (dbError) {
+      // Log database error but still return success for the deposit
+      console.error('Failed to save deposit record:', dbError);
+      res.json({
+        ...depositResult.result,
+        warning: 'Deposit successful but failed to save record to database'
+      });
+    }
   } catch (error: any) {
     // console.error('Error depositing:', error);
     return res.status(500).json({
       error: 'Failed to deposit tokens',
+      success: false,
+      details: error.message,
+    });
+  }
+};
+
+/**
+ * Get user's deposit history
+ * GET /api/trading/my-deposits
+ */
+export const handleGetMyDepositsRoute = async (req: VincentAuthenticatedRequest, res: Response) => {
+  try {
+    const { status, chainType, limit = '50', offset = '0' } = req.query;
+
+    // Get ethAddress from JWT
+    const pkpInfo = await getPKPInfo(req.user.decodedJWT);
+    const delegatorEthAddress = pkpInfo.ethAddress;
+    
+    console.log('Getting deposits for user:', delegatorEthAddress);
+    
+    // Create CAIP10 wallet format
+    const caip10Wallet = `eip155:${BASE_CHAIN_ID}:${delegatorEthAddress}`;
+
+    // Build query
+    const query: any = {
+      $or: [
+        { caip10Wallet },
+        { ethAddress: delegatorEthAddress }
+      ]
+    };
+
+    if (status) {
+      query.status = status;
+    }
+
+    if (chainType) {
+      query.chainType = chainType;
+    }
+
+    // Get deposits with pagination
+    const deposits = await Deposit.find(query)
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit as string))
+      .skip(parseInt(offset as string))
+      .lean();
+
+    // Get total count for pagination
+    const totalCount = await Deposit.countDocuments(query);
+
+    res.json({
+      success: true,
+      data: {
+        deposits,
+        pagination: {
+          total: totalCount,
+          limit: parseInt(limit as string),
+          offset: parseInt(offset as string),
+          hasMore: parseInt(offset as string) + deposits.length < totalCount
+        }
+      }
+    });
+  } catch (error: any) {
+    console.error('Error getting deposits:', error);
+    return res.status(500).json({
+      error: 'Failed to get deposit history',
+      success: false,
+      details: error.message,
+    });
+  }
+};
+
+/**
+ * Get deposit by ID
+ * GET /api/trading/deposit/:id
+ */
+export const handleGetDepositByIdRoute = async (req: VincentAuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Get ethAddress from JWT
+    const pkpInfo = await getPKPInfo(req.user.decodedJWT);
+    const delegatorEthAddress = pkpInfo.ethAddress;
+    
+    // Create CAIP10 wallet format
+    const caip10Wallet = `eip155:${BASE_CHAIN_ID}:${delegatorEthAddress}`;
+
+    const deposit = await Deposit.findOne({
+      _id: id,
+      $or: [
+        { caip10Wallet },
+        { ethAddress: delegatorEthAddress }
+      ]
+    }).lean();
+
+    if (!deposit) {
+      return res.status(404).json({
+        error: 'Deposit not found',
+        success: false,
+      });
+    }
+
+    res.json({
+      success: true,
+      data: { deposit }
+    });
+  } catch (error: any) {
+    // console.error('Error getting deposit:', error);
+    return res.status(500).json({
+      error: 'Failed to get deposit',
       success: false,
       details: error.message,
     });

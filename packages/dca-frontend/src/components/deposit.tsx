@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
+import { useBackend } from '@/hooks/useBackend';
 
 interface DepositProps {
   onDeposit?: () => void;
@@ -15,8 +16,10 @@ interface DepositProps {
 
 export const Deposit: React.FC<DepositProps> = ({ onDeposit }) => {
   const { authInfo } = useJwtContext();
+  const { createDeposit } = useBackend();
   const [amount, setAmount] = useState<string>('');
   const [symbol, setSymbol] = useState<string>('USDC');
+  const [chainType, setChainType] = useState<number>(0); // 0 = Native, 1 = Other
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -76,25 +79,12 @@ export const Deposit: React.FC<DepositProps> = ({ onDeposit }) => {
       // Convert to token's smallest unit
       const amountInSmallestUnit = Math.floor(depositAmount * Math.pow(10, tokenInfo.decimals));
 
-      // Call the backend deposit endpoint to approve tokens
-      const response = await fetch('http://localhost:3000/trading/deposit', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authInfo.jwt}`,
-        },
-        body: JSON.stringify({
-          tokenAddress: tokenInfo.address,
-          amount: amountInSmallestUnit,
-        }),
+      // Call the backend deposit endpoint using the hook
+      const result = await createDeposit({
+        tokenAddress: tokenInfo.address,
+        amount: amountInSmallestUnit,
+        chainType: chainType
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to deposit');
-      }
-
-      const result = await response.json();
       console.log('Deposit successful:', result);
 
       setSuccess(true);
@@ -161,6 +151,19 @@ export const Deposit: React.FC<DepositProps> = ({ onDeposit }) => {
               onChange={(e) => setAmount(e.target.value)}
               disabled={isLoading}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="chainType">Chain Type</Label>
+            <Select value={chainType.toString()} onValueChange={(value) => setChainType(parseInt(value))}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select chain type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="0">Native (Base/Ethereum)</SelectItem>
+                <SelectItem value="1">Other (Solana)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {error && (

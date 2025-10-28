@@ -6,9 +6,11 @@ import { Info } from '@/components/info';
 import { CreateOrder } from '@/components/create-order';
 import { Orders } from '@/components/orders';
 import { Deposit } from '@/components/deposit';
+import { DepositHistory } from '@/components/deposit-history';
 
 enum Tab {
   Deposit = 'deposit',
+  DepositHistory = 'deposit-history',
   Trading = 'trading',
   Orders = 'orders',
   Wallet = 'wallet',
@@ -29,13 +31,18 @@ export const Trading: React.FC = () => {
       >
         <TabsList className="mb-4 flex space-x-2 rounded-md bg-gray-200 p-2 w-full">
           <TabsTrigger value={Tab.Deposit}>Deposit</TabsTrigger>
+          <TabsTrigger value={Tab.DepositHistory}>Deposit History</TabsTrigger>
           <TabsTrigger value={Tab.Trading}>Swap</TabsTrigger>
           <TabsTrigger value={Tab.Orders}>Orders</TabsTrigger>
           <TabsTrigger value={Tab.Wallet}>Wallet</TabsTrigger>
         </TabsList>
 
         <TabsContent value={Tab.Deposit}>
-          <Deposit onDeposit={() => setActiveTab(Tab.Trading)} />
+          <Deposit onDeposit={() => setActiveTab(Tab.DepositHistory)} />
+        </TabsContent>
+
+        <TabsContent value={Tab.DepositHistory}>
+          <DepositHistory onRefresh={() => setActiveTab(Tab.DepositHistory)} />
         </TabsContent>
 
         <TabsContent value={Tab.Trading}>
