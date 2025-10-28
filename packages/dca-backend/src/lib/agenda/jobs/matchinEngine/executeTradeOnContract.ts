@@ -33,12 +33,12 @@ export async function executeTradeOnContract(trade: ITrade, delegatorAddress: st
   const tokenOutAddress = getTokenAddress(tokenOutSymbol);
 
   // Calculate amounts based on trade
-  const tokenInAmount = ethers.utils.parseUnits(trade.amount.toString(), 6); // Assuming 6 decimals for USDC
-  const tokenOutAmount = ethers.utils.parseUnits((trade.amount * trade.price).toString(), 18); // Assuming 18 decimals for other tokens
+  const tokenInAmount = ethers.parseUnits(trade.amount.toString(), 6); // Assuming 6 decimals for USDC
+  const tokenOutAmount = ethers.parseUnits((trade.amount * trade.price).toString(), 18); // Assuming 18 decimals for other tokens
 
   // Create CAIP10 identifiers for tokens
-  const tokenInCaip10 = `eip155:${BASE_CHAIN_ID}/erc20:${tokenInAddress}`;
-  const tokenOutCaip10 = `eip155:${BASE_CHAIN_ID}/erc20:${tokenOutAddress}`;
+  const tokenInCaip10 = `eip155:${BASE_CHAIN_ID}:${tokenInAddress}`;
+  const tokenOutCaip10 = `eip155:${BASE_CHAIN_ID}:${tokenOutAddress}`;
 
   // Debit seller (tokenIn being sold)
   syncUpArgs.push({
