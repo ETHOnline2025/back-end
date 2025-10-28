@@ -2,6 +2,7 @@ import mongoose from 'mongoose'; // Import mongoose for sessions
 
 import { IOrder, Order } from '../../../mongo/models/Order';
 import { ITrade, Trade } from '../../../mongo/models/Trade'; // Import Trade model
+import { executeTradeViaVincent } from './executeTradeOnContract';
 
 // Helper function to process order matching
 export const processOrderMatching = async (newOrder: IOrder, session: mongoose.ClientSession): Promise<{ matchedAmount: number; newOrder: IOrder; trades: ITrade[] }> => {
@@ -78,6 +79,15 @@ export const processOrderMatching = async (newOrder: IOrder, session: mongoose.C
       console.log(`Matched ${fillAmount} of new order (${newOrder._id}) with existing order (${existingOrder._id}).`);
       console.log(`New order remaining: ${remainingNewOrderAmount}`);
       console.log(`Existing order remaining: ${existingOrder.remainingAmount}`);
+      
+      // Execute trade on Trading contract via Vincent
+      try {
+        const txHash = await executeTradeViaVincent(trade, existingOrder.caip10Wallet);
+        console.log(`Trade executed on contract with tx: ${txHash}`);
+      } catch (error) {
+        console.error('Failed to execute trade on contract:', error);
+        // Continue with the matching process even if contract call fails
+      }
     }
   }
 

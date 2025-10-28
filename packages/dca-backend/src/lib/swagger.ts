@@ -563,5 +563,139 @@ export const swaggerSpec = {
         },
       },
     },
+    '/trading/sync-up': {
+      post: {
+        summary: 'Sync trading balance on Trading contract',
+        description: 'Calls the Trading contract\'s syncUp function to update trading balances from the order book',
+        tags: ['Trading'],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['caip10Wallet', 'caip10Token', 'evmDepositorWallet', 'newAmount'],
+                properties: {
+                  caip10Wallet: {
+                    type: 'string',
+                    description: 'CAIP-10 identifier of the wallet',
+                    example: 'eip155:84532:0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+                  },
+                  caip10Token: {
+                    type: 'string',
+                    description: 'CAIP-10 identifier of the token',
+                    example: 'eip155:84532/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+                  },
+                  evmDepositorWallet: {
+                    type: 'string',
+                    description: 'EVM address of the depositor',
+                    example: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+                  },
+                  newAmount: {
+                    type: 'number',
+                    description: 'New balance amount',
+                    example: 1000000,
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Balance synced successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: {
+                      type: 'boolean',
+                      example: true,
+                    },
+                    message: {
+                      type: 'string',
+                      example: 'SyncUp executed successfully',
+                    },
+                    txHash: {
+                      type: 'string',
+                      description: 'Transaction hash',
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '400': {
+            description: 'Bad request - missing parameters',
+          },
+          '500': {
+            description: 'Failed to execute syncUp',
+          },
+        },
+      },
+    },
+    '/trading/balance': {
+      get: {
+        summary: 'Get trading balance from Trading contract',
+        description: 'Calls the Trading contract\'s getTradeBalance function',
+        tags: ['Trading'],
+        parameters: [
+          {
+            name: 'caip10Wallet',
+            in: 'query',
+            required: true,
+            schema: {
+              type: 'string',
+              example: 'eip155:84532:0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb',
+            },
+          },
+          {
+            name: 'caip10Token',
+            in: 'query',
+            required: true,
+            schema: {
+              type: 'string',
+              example: 'eip155:84532/erc20:0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+            },
+          },
+        ],
+        responses: {
+          '200': {
+            description: 'Balance retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: {
+                      type: 'boolean',
+                      example: true,
+                    },
+                    caip10Wallet: {
+                      type: 'string',
+                    },
+                    caip10Token: {
+                      type: 'string',
+                    },
+                    balance: {
+                      type: 'string',
+                      description: 'Balance in token units',
+                      example: '1000000',
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '400': {
+            description: 'Bad request - missing parameters',
+          },
+          '500': {
+            description: 'Failed to get balance',
+          },
+        },
+      },
+    },
   },
 };

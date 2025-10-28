@@ -20,6 +20,7 @@ import { env } from '../env';
 import { serviceLogger } from '../logger';
 import { handleCreateOrderRoute, handleGetOrderRoute, handleListOrdersRoute, handleCancelOrderRoute } from './orders';
 import { handleListTradesRoute } from './trades';
+import { handleSyncUpRoute, handleGetBalanceRoute } from './trading';
 import { OrderCreateSchema, OrderIdentitySchema } from './schema';
 
 const { ALLOWED_AUDIENCE, CORS_ALLOWED_DOMAIN, IS_DEVELOPMENT, VINCENT_APP_ID } = env;
@@ -121,6 +122,10 @@ export const registerRoutes = (app: Express) => {
   app.get('/orders/:orderId', validateOrderId, handleGetOrderRoute);
   app.delete('/orders/:orderId', validateOrderId, handleCancelOrderRoute);
   app.get('/trades', middleware, setSentryUserMiddleware, handler(handleListTradesRoute));
+  
+  // Trading contract endpoints
+  app.post('/trading/sync-up', handleSyncUpRoute);
+  app.get('/trading/balance', handleGetBalanceRoute);
 
   serviceLogger.info(`Routes registered`);
 };
