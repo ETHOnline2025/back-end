@@ -240,20 +240,40 @@ const processOrderMatchingWithoutTransaction = async (newOrder: any): Promise<{ 
       query.sourceChainId = { $ne: newOrderChainId }; // Different chain
       console.log(`🌐 Implicit cross-chain matching: found orders on different chains for same token`);
     } else {
-      // Same-chain matching: same chain, opposite sides, compatible prices
-      query.sourceChainId = newOrderChainId; // Same chain
-      query.side = { $ne: newOrder.side }; // Opposite side (BUY vs SELL)
-      console.log(`🔄 Same-chain matching: looking for ${newOrder.side === 'BUY' ? 'SELL' : 'BUY'} orders on same chain`);
+      // Same-chain matching: check for same-side orders with different tokens (swap scenario)
+      const existingOrdersSameSide = await Order.find({
+        status: 'PENDING',
+        sourceChainId: newOrderChainId,
+        side: newOrder.side, // Same side (both BUY or both SELL)
+        tokenSymbol: { $ne: newOrder.tokenSymbol }, // Different token
+        price: newOrder.side === 'BUY' ? { $lte: newOrder.price } : { $gte: newOrder.price }
+      }).limit(1);
+      
+      if (existingOrdersSameSide.length > 0) {
+        // Found same-side orders with different tokens - treat as swap
+        query.sourceChainId = newOrderChainId; // Same chain
+        query.side = newOrder.side; // Same side
+        query.tokenSymbol = { $ne: newOrder.tokenSymbol }; // Different token
+        console.log(`🔄 Same-chain swap matching: looking for ${newOrder.side} orders with different token (${newOrder.tokenSymbol} vs other)`);
+      } else {
+        // Traditional same-chain matching: same chain, opposite sides, compatible prices
+        query.sourceChainId = newOrderChainId; // Same chain
+        query.side = { $ne: newOrder.side }; // Opposite side (BUY vs SELL)
+        console.log(`🔄 Same-chain matching: looking for ${newOrder.side === 'BUY' ? 'SELL' : 'BUY'} orders on same chain`);
+      }
     }
   }
   
   // Price matching: find orders with compatible prices
-  if (newOrder.side === 'BUY') {
-    // For BUY orders, find orders that can provide tokens at acceptable price
-    query.price = { $lte: newOrder.price };
-  } else {
-    // For SELL orders, find orders willing to buy at acceptable price
-    query.price = { $gte: newOrder.price };
+  // Only apply price filtering if not already set by swap matching logic
+  if (!query.tokenSymbol) {
+    if (newOrder.side === 'BUY') {
+      // For BUY orders, find orders that can provide tokens at acceptable price
+      query.price = { $lte: newOrder.price };
+    } else {
+      // For SELL orders, find orders willing to buy at acceptable price
+      query.price = { $gte: newOrder.price };
+    }
   }
   
   console.log(`🔄 CAIP10 matching: token ${newOrder.tokenSymbol} (${newOrderTokenAddress}), chain ${newOrderChainId}`);
