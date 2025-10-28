@@ -1,4 +1,7 @@
 import { LitNodeClient } from '@lit-protocol/lit-node-client';
+import { bundledVincentAbility as callContractWhitelistBundledVincentAbility } from '@vaultlayer/vincent-ability-call-contract';
+
+
 import { bundledVincentAbility as erc20ApprovalBundledVincentAbility } from '@lit-protocol/vincent-ability-erc20-approval';
 import {
   bundledVincentAbility as uniswapSwapBundledVincentAbility,
@@ -8,6 +11,7 @@ import {
 import { getVincentAbilityClient } from '@lit-protocol/vincent-app-sdk/abilityClient';
 
 import { delegateeSigner } from './utils/signer';
+import { z } from 'zod';
 
 const litNodeClient = new LitNodeClient({
   debug: true,
@@ -39,6 +43,13 @@ export function getErc20ApprovalToolClient() {
 export function getUniswapToolClient() {
   return getVincentAbilityClient({
     bundledVincentAbility: uniswapSwapBundledVincentAbility,
+    ethersSigner: delegateeSigner,
+  });
+}
+
+export function getCallContractWhitelistToolClient() {
+  return getVincentAbilityClient({
+    bundledVincentAbility: callContractWhitelistBundledVincentAbility,
     ethersSigner: delegateeSigner,
   });
 }

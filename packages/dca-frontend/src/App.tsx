@@ -7,7 +7,7 @@ import { env } from '@/config/env';
 
 import './App.css';
 
-import { Home } from '@/pages/home';
+import { Trading } from '@/pages/trading';
 import { Login } from '@/pages/login';
 
 const { VITE_APP_ID } = env;
@@ -15,7 +15,7 @@ const { VITE_APP_ID } = env;
 function AppContent() {
   const { authInfo } = useJwtContext();
 
-  return authInfo ? <Home /> : <Login />;
+  return authInfo ? <Trading /> : <Login />;
 }
 
 function App() {
