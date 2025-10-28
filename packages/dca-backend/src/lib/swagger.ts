@@ -7,7 +7,7 @@ export const swaggerSpec = {
     version: '1.0.0',
     description: 'API for managing orders and trades in the Vincent DCA backend.',
   },
-  servers: [{ url: 'http://localhost:3000', description: 'local' }],
+  servers: [{ url: '/', description: 'whatever' }, { url: 'http://localhost:3000', description: 'local' }],
   components: {
     securitySchemes: {
       VincentJWT: {
