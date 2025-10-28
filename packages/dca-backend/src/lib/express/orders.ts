@@ -39,6 +39,28 @@ const BASE_RPC_URL = 'https://sepolia.base.org';
 const BASE_CHAIN_ID = 84532;
 
 /**
+ * Convert decimal amount to token units based on token decimals
+ */
+const convertToTokenUnits = (amount: number, tokenSymbol: string): string => {
+  // Common token decimals
+  const tokenDecimals: Record<string, number> = {
+    'USDC': 6,
+    'USDT': 6,
+    'DAI': 18,
+    'ETH': 18,
+    'WETH': 18,
+    'WBTC': 8,
+  };
+  
+  const decimals = tokenDecimals[tokenSymbol.toUpperCase()] || 18; // Default to 18 decimals
+  const multiplier = Math.pow(10, decimals);
+  const tokenUnits = Math.floor(amount * multiplier);
+  
+  console.log(`Converting ${amount} ${tokenSymbol} to ${tokenUnits} units (${decimals} decimals)`);
+  return tokenUnits.toString();
+};
+
+/**
  * Get trade balance from the Trading contract
  * This is now only used for informational purposes, not for blocking orders
  */
@@ -266,32 +288,31 @@ const processOrderMatchingWithoutTransaction = async (newOrder: any): Promise<{ 
   console.log(`📋 Matching query:`, JSON.stringify(query, null, 2));
   
   const potentialMatches = await Order.find(query)
-    .sort(sortOrder)
-    .lean();
+    .sort(sortOrder);
     
   console.log(`🎯 Found ${potentialMatches.length} potential matches`);
 
-  for (const existingOrderDoc of potentialMatches) {
+  for (const existingOrder of potentialMatches) {
     if (remainingNewOrderAmount <= 0) {
       break;
     }
-
-    const existingOrder = await Order.findById(existingOrderDoc._id);
-    if (!existingOrder) continue;
 
     const fillAmount = Math.min(existingOrder.remainingAmount, remainingNewOrderAmount);
 
     if (fillAmount > 0) {
       // Update the existing order
-      existingOrder.remainingAmount -= fillAmount;
-      existingOrder.filledAmount += fillAmount;
+      const newRemainingAmount = existingOrder.remainingAmount - fillAmount;
+      const newFilledAmount = existingOrder.filledAmount + fillAmount;
+      const newStatus = newRemainingAmount <= 0 ? 'FILLED' : 'PARTIALLY_FILLED';
       
-      if (existingOrder.remainingAmount <= 0) {
-        existingOrder.status = 'FILLED';
-      } else {
-        existingOrder.status = 'PARTIALLY_FILLED';
-      }
-      await existingOrder.save();
+      await Order.updateOne(
+        { _id: existingOrder._id },
+        { 
+          remainingAmount: newRemainingAmount,
+          filledAmount: newFilledAmount,
+          status: newStatus
+        }
+      );
 
       // Update the new order's remaining amount
       remainingNewOrderAmount -= fillAmount;
@@ -492,15 +513,23 @@ export const handleCreateOrderRoute = async (req: VincentAuthenticatedRequest, r
     
     // Update the order with matching results if any matches occurred
     if (matchedAmount > 0) {
-      newOrder.remainingAmount -= matchedAmount;
-      newOrder.filledAmount += matchedAmount;
+      const newRemainingAmount = newOrder.remainingAmount - matchedAmount;
+      const newFilledAmount = newOrder.filledAmount + matchedAmount;
+      const newStatus = newRemainingAmount <= 0 ? 'FILLED' : 'PARTIALLY_FILLED';
       
-      if (newOrder.remainingAmount <= 0) {
-        newOrder.status = 'FILLED';
-      } else {
-        newOrder.status = 'PARTIALLY_FILLED';
-      }
-      await newOrder.save();
+      await Order.updateOne(
+        { _id: newOrder._id },
+        { 
+          remainingAmount: newRemainingAmount,
+          filledAmount: newFilledAmount,
+          status: newStatus
+        }
+      );
+      
+      // Update the local object for response
+      newOrder.remainingAmount = newRemainingAmount;
+      newOrder.filledAmount = newFilledAmount;
+      newOrder.status = newStatus;
     }
 
     // Return enhanced order information
