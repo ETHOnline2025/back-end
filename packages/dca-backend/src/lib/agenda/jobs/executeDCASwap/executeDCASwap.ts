@@ -197,7 +197,7 @@ export async function executeDCASwap(job: JobType, sentryScope: Sentry.Scope): P
       ethAddress,
       purchaseAmount,
       userPermittedAppVersion,
-      usdcBalance: ethers.utils.formatUnits(usdcBalance, 6),
+      usdcBalance: ethers.formatUnits(usdcBalance, 6),
     });
 
     const approvalHash = await addUsdcApproval({

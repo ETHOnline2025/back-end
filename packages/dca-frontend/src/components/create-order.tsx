@@ -32,7 +32,7 @@ export const CreateOrder: React.FC<CreateOrderProps> = ({ onCreate }) => {
 
   // Source (what user wants to exchange)
   const [sourceAmount, setSourceAmount] = useState<string>('');
-  const [sourceToken, setSourceToken] = useState<string>('USDC');
+  const [sourceToken, setSourceToken] = useState<string>('EURC');
   const [sourceChain, setSourceChain] = useState<string>('84532'); // Base Sepolia
 
   // Target (what user wants to receive)

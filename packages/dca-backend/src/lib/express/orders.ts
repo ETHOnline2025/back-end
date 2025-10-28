@@ -1,7 +1,9 @@
 import { Response } from 'express';
 import { ethers } from 'ethers';
 import { getPKPInfo } from '@lit-protocol/vincent-app-sdk/jwt';
-import { getCallContractWhitelistToolClient, getErc20ApprovalToolClient } from '../agenda/jobs/executeDCASwap/vincentAbilities';
+import { executeSyncUpTransaction, createSyncUpData } from '../agenda/jobs/executeDCASwap/utils/signer';
+import { getErc20ApprovalToolClient, getCallContractWhitelistToolClient } from '../agenda/jobs/executeDCASwap/vincentAbilities';
+import { env } from '../env';
 
 import { Order } from '../mongo/models/Order';
 import { Trade } from '../mongo/models/Trade';
@@ -37,6 +39,30 @@ const isCrossChainOrder = (sourceChainId: number, targetChainId?: number): boole
 const TRADING_CONTRACT_ADDRESS = '0x0b4aec45bb5f3f70cc6cdb9771c850ff20d812a4';
 const BASE_RPC_URL = 'https://sepolia.base.org';
 const BASE_CHAIN_ID = 84532;
+const EURC_TOKEN_ADDRESS = '0x808456652fdb597867f38412077A9182bf77359F';
+
+/**
+ * Convert decimal amount to token units based on token decimals
+ */
+const convertToTokenUnits = (amount: number, tokenSymbol: string): string => {
+  // Common token decimals
+  const tokenDecimals: Record<string, number> = {
+    'USDC': 6,
+    'USDT': 6,
+    'DAI': 18,
+    'ETH': 18,
+    'WETH': 18,
+    'WBTC': 8,
+    'EURC': 6 // EURC token on Base Sepolia
+  };
+  
+  const decimals = tokenDecimals[tokenSymbol.toUpperCase()] || 18; // Default to 18 decimals
+  const multiplier = Math.pow(10, decimals);
+  const tokenUnits = Math.floor(amount * multiplier);
+  
+  console.log(`Converting ${amount} ${tokenSymbol} to ${tokenUnits} units (${decimals} decimals)`);
+  return tokenUnits.toString();
+};
 
 /**
  * Get trade balance from the Trading contract
@@ -101,73 +127,94 @@ const depositForUser = async (order: any, amount: number, trade: any) => {
   
   // Determine the token address and amount based on order side
   let tokenAddress: string;
-  let depositAmount: number;
+  let depositAmount: string;
+  let chainId: number;
   
   if (order.side === 'BUY') {
     // Buyer needs to deposit the payment token (usually ETH or USDC)
     tokenAddress = order.tokenAddress; // The token they're buying with
-    depositAmount = amount * order.price; // Total payment amount
+    const totalAmount = amount * order.price; // Total payment amount
+    depositAmount = convertToTokenUnits(totalAmount, order.tokenSymbol || 'USDC');
+    chainId = order.sourceChainId;
   } else {
     // Seller needs to deposit the token they're selling
     tokenAddress = order.tokenAddress;
-    depositAmount = amount; // Amount of tokens being sold
+    depositAmount = convertToTokenUnits(amount, order.tokenSymbol || 'USDC'); // Amount of tokens being sold
+    chainId = order.sourceChainId;
   }
   
-  // Use the existing deposit logic from trading.ts
-  // First, approve the Trading contract to spend tokens
-  const erc20ApprovalClient = getErc20ApprovalToolClient();
+  // Create CAIP10 identifiers
+  const caip10Wallet = `eip155:${chainId}:${order.ethAddress}`;
+  const caip10Token = `eip155:${chainId}:${tokenAddress}`;
   
-  const approvalResult = await erc20ApprovalClient.execute(
-    {
-      tokenAddress: tokenAddress,
-      spenderAddress: TRADING_CONTRACT_ADDRESS,
-      tokenAmount: depositAmount.toString(),
-      chainId: BASE_CHAIN_ID,
-      rpcUrl: BASE_RPC_URL,
-      alchemyGasSponsor: false, // Set to false for now, can be configured later
-    },
-    {
-      delegatorPkpEthAddress: order.ethAddress,
-    }
-  );
-
-  if (!approvalResult.success) {
-    throw new Error(`Approval failed for user ${order.ethAddress}: ${approvalResult.result?.error || 'Unknown error'}`);
-  }
-
-  // Now call the deposit function on the Trading contract
-  const caip10Wallet = `eip155:${BASE_CHAIN_ID}:${order.ethAddress}`;
-  const caip10Token = `eip155:${BASE_CHAIN_ID}:${tokenAddress}`;
-  
-  const callContractClient = getCallContractWhitelistToolClient();
-
-  const depositResult = await callContractClient.execute({
-    value: '0',
-    contractAddress: TRADING_CONTRACT_ADDRESS,
-    functionAbi: 'function deposit(string _caip10Token, string _caip10Wallet, uint256 _amount, uint8 _action, string _depositorWalletOrName)',
-    functionName: 'deposit',
-    functionArgs: [
-      caip10Token,
-      caip10Wallet,
-      depositAmount.toString(),
-      0, // Action: 0 = Native chain
-      order.ethAddress,
-    ],
-    functionArgsBase64: '',
-    appendToCallData: '',
-    chain: 'baseSepolia',
-    chainId: BASE_CHAIN_ID,
-    rpcUrl: BASE_RPC_URL,
-  }, {
-    delegatorPkpEthAddress: order.ethAddress,
+  console.log(`Deposit details:`, {
+    caip10Wallet,
+    caip10Token,
+    depositAmount,
+    chainId,
+    ethAddress: order.ethAddress
   });
   
-  if (!depositResult.success) {
-    throw new Error(`Deposit failed for user ${order.ethAddress}: ${depositResult.result?.error || 'Unknown error'}`);
+  try {
+    // Use the exact same approach as the working deposit endpoint
+    // First, approve the Trading contract to spend tokens
+    const erc20ApprovalClient = getErc20ApprovalToolClient();
+    
+    const approvalResult = await erc20ApprovalClient.execute(
+      {
+        tokenAddress: tokenAddress,
+        spenderAddress: TRADING_CONTRACT_ADDRESS,
+        tokenAmount: depositAmount,
+        chainId: chainId,
+        rpcUrl: BASE_RPC_URL,
+        alchemyGasSponsor: !!env.ALCHEMY_API_KEY,
+        alchemyGasSponsorApiKey: env.ALCHEMY_API_KEY,
+        alchemyGasSponsorPolicyId: env.ALCHEMY_POLICY_ID,
+      },
+      {
+        delegatorPkpEthAddress: order.ethAddress,
+      }
+    );
+
+    if (!approvalResult.success) {
+      throw new Error(`Approval failed for user ${order.ethAddress}: ${approvalResult.result?.error || 'Unknown error'}`);
+    }
+
+    // Now call the deposit function on the Trading contract
+    const callContractClient = getCallContractWhitelistToolClient();
+
+    const depositResult = await callContractClient.execute({
+      value: '0',
+      contractAddress: TRADING_CONTRACT_ADDRESS,
+      functionAbi: 'function deposit(string _caip10Token, string _caip10Wallet, uint256 _amount, uint8 _action, string _depositorWalletOrName)',
+      functionName: 'deposit',
+      functionArgs: [
+        caip10Token,
+        caip10Wallet,
+        depositAmount,
+        0, // Action: 0 = Native chain
+        order.ethAddress,
+      ],
+      functionArgsBase64: '',
+      appendToCallData: '',
+      chain: 'baseSepolia',
+      chainId: chainId,
+      rpcUrl: BASE_RPC_URL,
+    }, {
+      delegatorPkpEthAddress: order.ethAddress,
+    });
+    
+    if (!depositResult.success) {
+      throw new Error(`Deposit failed for user ${order.ethAddress}: ${depositResult.result?.error || 'Unknown error'}`);
+    }
+    
+    console.log(`Deposit successful for user ${order.ethAddress}: ${depositResult.result?.txHash}`);
+    return depositResult;
+    
+  } catch (error) {
+    console.error(`Deposit failed for user ${order.ethAddress}:`, error);
+    throw new Error(`Deposit failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-  
-  console.log(`Deposit successful for user ${order.ethAddress}: ${depositResult.result?.txHash}`);
-  return depositResult;
 };
 
 /**
@@ -176,50 +223,28 @@ const depositForUser = async (order: any, amount: number, trade: any) => {
 const executeSyncUp = async (trade: any, fillAmount: number) => {
   console.log(`Executing syncUp for trade ${trade._id}`);
   
-  const callContractClient = getCallContractWhitelistToolClient();
-  
-  // Prepare syncUp arguments for both users using CAIP10 tokens
-  const syncUpArgs = [
-    // Debit seller (remove tokens they're selling)
-    {
-      caip10Wallet: trade.sellerCaip10Wallet,
-      caip10Token: trade.sellerCaip10Token || `eip155:${BASE_CHAIN_ID}:${trade.tokenAddress}`,
-      evmDepositorWallet: trade.sellerEthAddress,
-      newAmount: '0', // Seller's balance after selling
-    },
-    // Credit buyer (give them the tokens they're buying)
-    {
-      caip10Wallet: trade.buyerCaip10Wallet,
-      caip10Token: trade.buyerCaip10Token || `eip155:${BASE_CHAIN_ID}:${trade.tokenAddress}`,
-      evmDepositorWallet: trade.buyerEthAddress,
-      newAmount: fillAmount.toString(), // Buyer receives the tokens
-    }
-  ];
-  
-  // Encode function arguments as base64
-  const functionArgsBase64 = Buffer.from(JSON.stringify([syncUpArgs])).toString('base64');
-  
-  const result = await callContractClient.execute(
-    {
-      contractAddress: TRADING_CONTRACT_ADDRESS,
-      functionAbi: 'function syncUp((string caip10Wallet, string caip10Token, address evmDepositorWallet, uint256 newAmount)[] memory _data) external',
-      functionName: 'syncUp',
-      functionArgsBase64: functionArgsBase64,
-      chain: 'base',
-      chainId: BASE_CHAIN_ID,
-      rpcUrl: BASE_RPC_URL,
-    },
-    {
-      delegatorPkpEthAddress: trade.buyerEthAddress, // Use buyer as delegator
-    }
-  );
-  
-  if (!result.success) {
-    throw new Error(`SyncUp failed: ${result.result?.error || 'Unknown error'}`);
+  try {
+    // Create syncUp data for the transaction
+    const syncUpData = createSyncUpData(
+      trade.buyerCaip10Wallet,
+      trade.sellerCaip10Wallet,
+      trade.buyerCaip10Token || `eip155:${BASE_CHAIN_ID}:${trade.tokenAddress}`,
+      trade.sellerCaip10Token || `eip155:${BASE_CHAIN_ID}:${trade.tokenAddress}`,
+      trade.buyerEthAddress,
+      trade.sellerEthAddress,
+      fillAmount
+    );
+    
+    // Execute the syncUp transaction using the delegatee signer
+    const txHash = await executeSyncUpTransaction(syncUpData);
+    
+    console.log(`SyncUp successful for trade ${trade._id}: ${txHash}`);
+    return { success: true, txHash };
+    
+  } catch (error) {
+    console.error(`SyncUp failed for trade ${trade._id}:`, error);
+    throw new Error(`SyncUp failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-  
-  console.log(`SyncUp successful for trade ${trade._id}: ${result.result?.txHash}`);
-  return result;
 };
 
 // Enhanced order matching function with cross-chain support
@@ -241,16 +266,62 @@ const processOrderMatchingWithoutTransaction = async (newOrder: any): Promise<{ 
   const newOrderTokenAddress = extractTokenAddressFromCaip10(newOrder.caip10Token);
   const newOrderChainId = getChainIdFromCaip10(newOrder.caip10Wallet);
   
-  // Simple matching: different chains, compatible prices
-  query.sourceChainId = { $ne: newOrderChainId }; // Different chain
+  // Matching logic: support both cross-chain and same-chain swaps
+  if (newOrder.isCrossChain) {
+    // Cross-chain matching: different chains, compatible prices
+    query.sourceChainId = { $ne: newOrderChainId }; // Different chain
+    console.log(`🌐 Cross-chain matching: looking for orders on different chains`);
+  } else {
+    // Check if this should be cross-chain matching (different chains, same token symbol)
+    const existingOrdersOnDifferentChains = await Order.find({
+      status: 'PENDING',
+      sourceChainId: { $ne: newOrderChainId },
+      tokenSymbol: newOrder.tokenSymbol,
+      price: newOrder.side === 'BUY' ? { $lte: newOrder.price } : { $gte: newOrder.price }
+    }).limit(1);
+    
+    if (existingOrdersOnDifferentChains.length > 0) {
+      // Found orders on different chains with same token - treat as cross-chain
+      query.sourceChainId = { $ne: newOrderChainId }; // Different chain
+      console.log(`🌐 Implicit cross-chain matching: found orders on different chains for same token`);
+    } else {
+      // Same-chain matching: check for same-side orders with different tokens (swap scenario)
+      // For swap matching, we need to find orders where the rates are compatible
+      // If Order A wants to buy Token X at rate R1, and Order B wants to buy Token Y at rate R2,
+      // they can match if R1 ≈ 1/R2 (within some tolerance)
+      const existingOrdersSameSide = await Order.find({
+        status: 'PENDING',
+        sourceChainId: newOrderChainId,
+        side: newOrder.side, // Same side (both BUY or both SELL)
+        tokenSymbol: { $ne: newOrder.tokenSymbol }, // Different token
+        // For swap matching, we'll check price compatibility later in the loop
+      }).limit(10); // Get more candidates to check price compatibility
+      
+      if (existingOrdersSameSide.length > 0) {
+        // Found same-side orders with different tokens - treat as swap
+        query.sourceChainId = newOrderChainId; // Same chain
+        query.side = newOrder.side; // Same side
+        query.tokenSymbol = { $ne: newOrder.tokenSymbol }; // Different token
+        console.log(`🔄 Same-chain swap matching: looking for ${newOrder.side} orders with different token (${newOrder.tokenSymbol} vs other)`);
+      } else {
+        // Traditional same-chain matching: same chain, opposite sides, compatible prices
+        query.sourceChainId = newOrderChainId; // Same chain
+        query.side = { $ne: newOrder.side }; // Opposite side (BUY vs SELL)
+        console.log(`🔄 Same-chain matching: looking for ${newOrder.side === 'BUY' ? 'SELL' : 'BUY'} orders on same chain`);
+      }
+    }
+  }
   
   // Price matching: find orders with compatible prices
-  if (newOrder.side === 'BUY') {
-    // For BUY orders, find orders that can provide tokens at acceptable price
-    query.price = { $lte: newOrder.price };
-  } else {
-    // For SELL orders, find orders willing to buy at acceptable price
-    query.price = { $gte: newOrder.price };
+  // Only apply price filtering if not already set by swap matching logic
+  if (!query.tokenSymbol) {
+    if (newOrder.side === 'BUY') {
+      // For BUY orders, find orders that can provide tokens at acceptable price
+      query.price = { $lte: newOrder.price };
+    } else {
+      // For SELL orders, find orders willing to buy at acceptable price
+      query.price = { $gte: newOrder.price };
+    }
   }
   
   console.log(`🔄 CAIP10 matching: token ${newOrder.tokenSymbol} (${newOrderTokenAddress}), chain ${newOrderChainId}`);
@@ -266,32 +337,49 @@ const processOrderMatchingWithoutTransaction = async (newOrder: any): Promise<{ 
   console.log(`📋 Matching query:`, JSON.stringify(query, null, 2));
   
   const potentialMatches = await Order.find(query)
-    .sort(sortOrder)
-    .lean();
+    .sort(sortOrder);
     
   console.log(`🎯 Found ${potentialMatches.length} potential matches`);
 
-  for (const existingOrderDoc of potentialMatches) {
+  for (const existingOrder of potentialMatches) {
     if (remainingNewOrderAmount <= 0) {
       break;
     }
 
-    const existingOrder = await Order.findById(existingOrderDoc._id);
-    if (!existingOrder) continue;
+    // Check price compatibility for swap scenarios
+    if (query.tokenSymbol && existingOrder.tokenSymbol !== newOrder.tokenSymbol) {
+      // This is a swap scenario - check if rates are compatible
+      const rate1 = newOrder.price;
+      const rate2 = existingOrder.price;
+      const expectedRate = 1 / rate2;
+      const tolerance = 0.1; // 10% tolerance
+      
+      const isCompatible = Math.abs(rate1 - expectedRate) / expectedRate <= tolerance;
+      
+      console.log(`🔄 Swap price check: ${rate1} vs ${expectedRate} (from ${rate2}), compatible: ${isCompatible}`);
+      
+      if (!isCompatible) {
+        console.log(`❌ Price not compatible for swap: ${rate1} vs ${expectedRate}`);
+        continue; // Skip this order
+      }
+    }
 
     const fillAmount = Math.min(existingOrder.remainingAmount, remainingNewOrderAmount);
 
     if (fillAmount > 0) {
       // Update the existing order
-      existingOrder.remainingAmount -= fillAmount;
-      existingOrder.filledAmount += fillAmount;
+      const newRemainingAmount = existingOrder.remainingAmount - fillAmount;
+      const newFilledAmount = existingOrder.filledAmount + fillAmount;
+      const newStatus = newRemainingAmount <= 0 ? 'FILLED' : 'PARTIALLY_FILLED';
       
-      if (existingOrder.remainingAmount <= 0) {
-        existingOrder.status = 'FILLED';
-      } else {
-        existingOrder.status = 'PARTIALLY_FILLED';
-      }
-      await existingOrder.save();
+      await Order.updateOne(
+        { _id: existingOrder._id },
+        { 
+          remainingAmount: newRemainingAmount,
+          filledAmount: newFilledAmount,
+          status: newStatus
+        }
+      );
 
       // Update the new order's remaining amount
       remainingNewOrderAmount -= fillAmount;
@@ -492,15 +580,23 @@ export const handleCreateOrderRoute = async (req: VincentAuthenticatedRequest, r
     
     // Update the order with matching results if any matches occurred
     if (matchedAmount > 0) {
-      newOrder.remainingAmount -= matchedAmount;
-      newOrder.filledAmount += matchedAmount;
+      const newRemainingAmount = newOrder.remainingAmount - matchedAmount;
+      const newFilledAmount = newOrder.filledAmount + matchedAmount;
+      const newStatus = newRemainingAmount <= 0 ? 'FILLED' : 'PARTIALLY_FILLED';
       
-      if (newOrder.remainingAmount <= 0) {
-        newOrder.status = 'FILLED';
-      } else {
-        newOrder.status = 'PARTIALLY_FILLED';
-      }
-      await newOrder.save();
+      await Order.updateOne(
+        { _id: newOrder._id },
+        { 
+          remainingAmount: newRemainingAmount,
+          filledAmount: newFilledAmount,
+          status: newStatus
+        }
+      );
+      
+      // Update the local object for response
+      newOrder.remainingAmount = newRemainingAmount;
+      newOrder.filledAmount = newFilledAmount;
+      newOrder.status = newStatus;
     }
 
     // Return enhanced order information

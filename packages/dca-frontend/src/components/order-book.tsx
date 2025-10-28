@@ -1,11 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
-  ArrowUpDown,
-  RefreshCcw,
-  Search,
-} from 'lucide-react';
-import {
   flexRender,
   getCoreRowModel,
   getFilteredRowModel,
@@ -15,6 +10,7 @@ import {
   type ColumnFiltersState,
   type SortingState,
 } from '@tanstack/react-table';
+import { ArrowUpDown, RefreshCcw, Search } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -112,9 +108,9 @@ export const OrderBook: React.FC = () => {
             </div>
             <div>
               <div className="font-medium text-white">{row.original.symbol || '—'}</div>
-              <div className="text-xs text-muted-foreground">
+              {/* <div className="text-xs text-muted-foreground">
                 {row.original.caip10Token ? row.original.caip10Token.split(':').pop() : '—'}
-              </div>
+              </div> */}
             </div>
           </div>
         ),

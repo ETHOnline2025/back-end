@@ -5,7 +5,6 @@ import { getErc20ApprovalToolClient, getCallContractWhitelistToolClient } from '
 
 import { VincentAuthenticatedRequest } from './types';
 import { env } from '../env';
-import { Interface } from 'ethers/lib/utils';
 import { Deposit } from '../mongo/models/Deposit';
 
 
@@ -317,7 +316,7 @@ export const handleDepositRoute = async (req: VincentAuthenticatedRequest, res: 
 
     const correctFunctionAbi = 'function deposit(string _caip10Token, string _caip10Wallet, uint256 _amount, uint8 _action, string _depositorWalletOrName)';
 
-    const iface = new Interface([correctFunctionAbi]); // Create an interface from your function ABI
+    const iface = new ethers.utils.Interface([correctFunctionAbi]); // Create an interface from your function ABI
     const encodedFunctionData = iface.encodeFunctionData(
       "deposit", // The function name
       [

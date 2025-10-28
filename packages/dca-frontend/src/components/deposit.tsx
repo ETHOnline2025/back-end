@@ -32,7 +32,7 @@ export const Deposit: React.FC<DepositProps> = ({ onDeposit, trigger, open, onOp
   const { authInfo } = useJwtContext();
   const { createDeposit } = useBackend();
   const [amount, setAmount] = useState<string>('');
-  const [symbol, setSymbol] = useState<string>('USDC');
+  const [symbol, setSymbol] = useState<string>('EURC');
   const [chainType, setChainType] = useState<number>(0); // 0 = Native, 1 = Other
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +88,7 @@ export const Deposit: React.FC<DepositProps> = ({ onDeposit, trigger, open, onOp
       }
 
       const ethAddress = authInfo.pkp.ethAddress;
-      const tokenInfo = tokenConfig[symbol] || tokenConfig['USDC'];
+      const tokenInfo = tokenConfig[symbol] || tokenConfig['EURC'];
 
       const depositAmount = parseFloat(amount);
       if (isNaN(depositAmount) || depositAmount <= 0) {

@@ -106,9 +106,9 @@ export async function mintCapacityCredit({
 
   if (mintCost.gt(await litContractClient.signer.getBalance())) {
     throw new Error(
-      `${await litContractClient.signer.getAddress()} has insufficient balance to mint capacity credit: ${ethers.utils.formatEther(
+      `${await litContractClient.signer.getAddress()} has insufficient balance to mint capacity credit: ${ethers.formatEther(
         await litContractClient.signer.getBalance()
-      )} < ${ethers.utils.formatEther(mintCost)}`
+      )} < ${ethers.formatEther(mintCost)}`
     );
   }
 

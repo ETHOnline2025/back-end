@@ -15,8 +15,8 @@ import {
 import { OrderBook } from '@/components/order-book-2';
 import { Orders } from '@/components/orders';
 import DynamicIsland from '@/components/smoothui/ui/DynamicIsland';
-import { FloatingDock } from '@/components/ui/floating-dock';
 import { Card } from '@/components/ui/card';
+import { FloatingDock } from '@/components/ui/floating-dock';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Wallet } from '@/components/wallet';
 import { ArrowDownToLine, ArrowUpToLine, Search, ShieldCheck, Wallet2 } from 'lucide-react';

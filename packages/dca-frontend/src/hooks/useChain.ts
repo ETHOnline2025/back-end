@@ -5,9 +5,8 @@ import { ethers } from 'ethers';
 
 const ERC20_ABI = ['function balanceOf(address owner) view returns (uint256)'];
 
-const WBTC_CONTRACT_ADDRESSES: Record<number, string> = {
-  [LIT_EVM_CHAINS.base.chainId]: '0x0555E30da8f98308EdB960aa94C0Db47230d2B9c', // Base mainnet WBTC
-  84532: '0x5e84b9bD91fa4781F922da8a16436c98f94b5264', // Base Sepolia WBTC
+const EURC_CONTRACT_ADDRESSES: Record<number, string> = {
+  84532: '0x808456652fdb597867f38412077A9182bf77359F', // Base Sepolia EURC
 };
 
 const USDC_CONTRACT_ADDRESSES: Record<number, string> = {
@@ -37,8 +36,8 @@ export const useChain = () => {
     provider
   );
 
-  const wbtcContract = new ethers.Contract(
-    WBTC_CONTRACT_ADDRESSES[chain.chainId],
+  const eurcContract = new ethers.Contract(
+    EURC_CONTRACT_ADDRESSES[chain.chainId],
     ERC20_ABI,
     provider
   );
@@ -48,6 +47,6 @@ export const useChain = () => {
     setChain,
     provider,
     usdcContract,
-    wbtcContract,
+    eurcContract,
   };
 };

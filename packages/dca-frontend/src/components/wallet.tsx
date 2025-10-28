@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { Check, Copy, LogOut, RefreshCcw, WalletIcon } from 'lucide-react';
 import { ethers } from 'ethers';
+import { Check, Copy, LogOut, RefreshCcw, WalletIcon } from 'lucide-react';
 
 import { useJwtContext } from '@lit-protocol/vincent-app-sdk/react';
 
@@ -34,10 +34,10 @@ interface WalletProps {
 }
 
 export const Wallet: React.FC<WalletProps> = ({ className }) => {
-  const { chain, provider, usdcContract, wbtcContract } = useChain();
+  const { chain, provider, usdcContract, eurcContract } = useChain();
   const [ethBalance, setEthBalance] = useState<string>('0');
   const [usdcBalance, setUsdcBalance] = useState<string>('0');
-  const [wbtcBalance, setWbtcBalance] = useState<string>('0');
+  const [eurcBalance, setEurcBalance] = useState<string>('0');
   const [isLoadingBalance, setIsLoadingBalance] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
@@ -52,22 +52,27 @@ export const Wallet: React.FC<WalletProps> = ({ className }) => {
       setIsLoadingBalance(true);
       setError(null);
 
-      const [ethBalanceWei, usdcBalanceRaw, wbtcBalanceWei] = await Promise.all([
+      const [ethBalanceWei, usdcBalanceRaw, eurcBalanceRaw] = await Promise.all([
         provider.getBalance(pkpAddress),
         usdcContract.balanceOf(pkpAddress),
-        wbtcContract.balanceOf(pkpAddress),
+        eurcContract.balanceOf(pkpAddress),
       ]);
+
+      console.log('Raw balances:');
+      console.log('ETH:', ethBalanceWei.toString());
+      console.log('USDC:', usdcBalance.toString());
+      console.log('EURC:', eurcBalance.toString());
 
       setEthBalance(ethers.utils.formatUnits(ethBalanceWei, 18));
       setUsdcBalance(ethers.utils.formatUnits(usdcBalanceRaw, 6));
-      setWbtcBalance(ethers.utils.formatUnits(wbtcBalanceWei, 8));
+      setEurcBalance(ethers.utils.formatUnits(eurcBalanceRaw, 8));
     } catch (err) {
       console.error('Error fetching PKP balances:', err);
       setError('Failed to fetch wallet balance');
     } finally {
       setIsLoadingBalance(false);
     }
-  }, [pkpAddress, provider, usdcContract, wbtcContract]);
+  }, [pkpAddress, provider, usdcContract, eurcContract]);
 
   useEffect(() => {
     queueMicrotask(() => fetchPkpBalance());
@@ -97,12 +102,12 @@ export const Wallet: React.FC<WalletProps> = ({ className }) => {
         accent: 'bg-cyan-500/10 text-cyan-300',
       },
       {
-        label: 'WBTC Balance',
-        value: isLoadingBalance ? 'Loading…' : `${formatBalance(wbtcBalance, 8)} WBTC`,
+        label: 'eurc Balance',
+        value: isLoadingBalance ? 'Loading…' : `${formatBalance(eurcBalance, 8)} eurc`,
         accent: 'bg-orange-500/10 text-orange-300',
       },
     ],
-    [chain.symbol, ethBalance, isLoadingBalance, usdcBalance, wbtcBalance]
+    [chain.symbol, ethBalance, isLoadingBalance, usdcBalance, eurcBalance]
   );
 
   return (
@@ -120,9 +125,7 @@ export const Wallet: React.FC<WalletProps> = ({ className }) => {
               Manage your PKP account, view balances, and access quick actions.
             </p>
           </div>
-          <Badge className="bg-[#1a1f2e] px-3 py-1 text-sm text-white">
-            Network: {chain.name}
-          </Badge>
+          <Badge className="bg-[#1a1f2e] px-3 py-1 text-sm text-white">Network: {chain.name}</Badge>
         </div>
 
         <div className="rounded-xl border border-white/10 bg-[#0b0d0e] p-5">
