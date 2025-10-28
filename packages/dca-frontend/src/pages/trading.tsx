@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Wallet } from '@/components/wallet';
 import { Info } from '@/components/info';
+import { CreateOrder } from '@/components/create-order';
 
 enum Tab {
   Trading = 'trading',
@@ -30,12 +31,7 @@ export const Trading: React.FC = () => {
         </TabsList>
 
         <TabsContent value={Tab.Trading}>
-          <div className="flex items-center justify-center h-96">
-            <div className="text-center">
-              <h2 className="text-2xl font-bold mb-4">Trading Interface</h2>
-              <p className="text-gray-600">Order book and swap interface coming soon...</p>
-            </div>
-          </div>
+          <CreateOrder onCreate={() => setActiveTab(Tab.Orders)} />
         </TabsContent>
 
         <TabsContent value={Tab.Orders}>
