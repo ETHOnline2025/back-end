@@ -250,10 +250,24 @@ const processOrderMatchingWithoutTransaction = async (newOrder: any): Promise<{ 
     query.sourceChainId = { $ne: newOrderChainId }; // Different chain
     console.log(`🌐 Cross-chain matching: looking for orders on different chains`);
   } else {
-    // Same-chain matching: same chain, opposite sides, compatible prices
-    query.sourceChainId = newOrderChainId; // Same chain
-    query.side = { $ne: newOrder.side }; // Opposite side (BUY vs SELL)
-    console.log(`🔄 Same-chain matching: looking for ${newOrder.side === 'BUY' ? 'SELL' : 'BUY'} orders on same chain`);
+    // Check if this should be cross-chain matching (different chains, same token symbol)
+    const existingOrdersOnDifferentChains = await Order.find({
+      status: 'PENDING',
+      sourceChainId: { $ne: newOrderChainId },
+      tokenSymbol: newOrder.tokenSymbol,
+      price: newOrder.side === 'BUY' ? { $lte: newOrder.price } : { $gte: newOrder.price }
+    }).limit(1);
+    
+    if (existingOrdersOnDifferentChains.length > 0) {
+      // Found orders on different chains with same token - treat as cross-chain
+      query.sourceChainId = { $ne: newOrderChainId }; // Different chain
+      console.log(`🌐 Implicit cross-chain matching: found orders on different chains for same token`);
+    } else {
+      // Same-chain matching: same chain, opposite sides, compatible prices
+      query.sourceChainId = newOrderChainId; // Same chain
+      query.side = { $ne: newOrder.side }; // Opposite side (BUY vs SELL)
+      console.log(`🔄 Same-chain matching: looking for ${newOrder.side === 'BUY' ? 'SELL' : 'BUY'} orders on same chain`);
+    }
   }
   
   // Price matching: find orders with compatible prices

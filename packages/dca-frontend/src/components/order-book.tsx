@@ -50,6 +50,10 @@ export const OrderBook: React.FC = () => {
     return amount.toFixed(4);
   };
 
+  const formatTotal = (total: number) => {
+    return total.toFixed(2);
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();
   };
