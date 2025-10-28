@@ -117,10 +117,10 @@ export const registerRoutes = (app: Express) => {
     handler(handleDeleteScheduleRoute)
   );
 
-  app.post('/orders', validateOrderCreate, handleCreateOrderRoute);
-  app.get('/orders', handleListOrdersRoute);
-  app.get('/orders/:orderId', validateOrderId, handleGetOrderRoute);
-  app.delete('/orders/:orderId', validateOrderId, handleCancelOrderRoute);
+  app.post('/orders', middleware, setSentryUserMiddleware, validateOrderCreate, handler(handleCreateOrderRoute));
+  app.get('/orders', middleware, setSentryUserMiddleware, handler(handleListOrdersRoute));
+  app.get('/orders/:orderId', middleware, setSentryUserMiddleware, validateOrderId, handler(handleGetOrderRoute));
+  app.delete('/orders/:orderId', middleware, setSentryUserMiddleware, validateOrderId, handler(handleCancelOrderRoute));
   app.get('/trades', middleware, setSentryUserMiddleware, handler(handleListTradesRoute));
   
   // Trading contract endpoints

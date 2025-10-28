@@ -1,7 +1,9 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
+import { getPKPInfo } from '@lit-protocol/vincent-app-sdk/jwt';
 
 import { Order } from '../mongo/models/Order';
 import { Trade } from '../mongo/models/Trade';
+import { VincentAuthenticatedRequest } from './types';
 // import mongoose from 'mongoose';
 
 // Simplified order matching function without transactions
@@ -81,24 +83,20 @@ const processOrderMatchingWithoutTransaction = async (newOrder: any): Promise<{ 
   return { matchedAmount, trades };
 };
 
-export const handleListOrdersRoute = async (req: Request, res: Response) => {
-  const { ethAddress } = req.query;
+export const handleListOrdersRoute = async (req: VincentAuthenticatedRequest, res: Response) => {
+  const { ethAddress } = getPKPInfo(req.user.decodedJWT);
 
 
   // Search for orders where caip10Wallet contains the ethAddress
   // This handles both formats: "0xabc123..." and "eip155:1:0xabc123..."
-  const orders = (!ethAddress || typeof ethAddress !== 'string')
-    ? await Order.find({})
-      .sort({ createdAt: -1 })
-      .lean()
-    : await Order.find({
-      $or: [
-        { caip10Wallet: ethAddress },
-        { caip10Wallet: { $regex: ethAddress, $options: 'i' } },
-      ],
-    })
-      .sort({ createdAt: -1 })
-      .lean();
+  const orders = await Order.find({
+    $or: [
+      { caip10Wallet: ethAddress },
+      { caip10Wallet: { $regex: ethAddress, $options: 'i' } },
+    ],
+  })
+    .sort({ createdAt: -1 })
+    .lean();
 
 
   if (orders.length === 0) {
@@ -106,15 +104,10 @@ export const handleListOrdersRoute = async (req: Request, res: Response) => {
     return;
   }
 
-  res.json({ data: orders, success: true });
+    return res.json({ data: orders, success: true });
 };
-export const handleCreateOrderRoute = async (req: Request, res: Response) => {
-  const { ethAddress } = req.body;
-
-  if (!ethAddress || typeof ethAddress !== 'string') {
-    res.status(400).json({ error: 'ethAddress is required in request body' });
-    return;
-  }
+export const handleCreateOrderRoute = async (req: VincentAuthenticatedRequest, res: Response) => {
+  const { ethAddress } = getPKPInfo(req.user.decodedJWT);
 
   // req.body is validated by Zod middleware
   const { amount, side, price, caip10Token, caip10Wallet, symbol, metadata } = req.body;
@@ -150,20 +143,15 @@ export const handleCreateOrderRoute = async (req: Request, res: Response) => {
     }
 
     // You might want to return trades along with the order
-    res.status(201).json({ data: newOrder, matchedAmount, trades, success: true });
+    return res.status(201).json({ data: newOrder, matchedAmount, trades, success: true });
   } catch (error: any) {
     console.error('Error creating order:', error);
-    res.status(500).json({ error: 'Failed to create order', success: false, details: error.message });
+    return res.status(500).json({ error: 'Failed to create order', success: false, details: error.message });
   }
 };
-export const handleGetOrderRoute = async (req: Request, res: Response) => {
-    const { ethAddress } = req.query;
+export const handleGetOrderRoute = async (req: VincentAuthenticatedRequest, res: Response) => {
+    const { ethAddress } = getPKPInfo(req.user.decodedJWT);
     const { orderId } = req.params;
-
-    if (!ethAddress || typeof ethAddress !== 'string') {
-        res.status(400).json({ error: 'ethAddress query parameter is required' });
-        return;
-    }
 
     const order = await Order.findOne({ 
       _id: orderId, 
@@ -182,14 +170,9 @@ export const handleGetOrderRoute = async (req: Request, res: Response) => {
 }
 
 
-export const handleCancelOrderRoute = async (req: Request, res: Response) => {
-  const { ethAddress } = req.query;
+export const handleCancelOrderRoute = async (req: VincentAuthenticatedRequest, res: Response) => {
+  const { ethAddress } = getPKPInfo(req.user.decodedJWT);
   const { orderId } = req.params; // Validated by Zod middleware
-
-  if (!ethAddress || typeof ethAddress !== 'string') {
-    res.status(400).json({ error: 'ethAddress query parameter is required' });
-    return;
-  }
 
   try {
     const order = await Order.findOne({

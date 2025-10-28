@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useJwtContext } from '@lit-protocol/vincent-app-sdk/react';
+import { useBackend } from '@/hooks/useBackend';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,6 +12,8 @@ interface CreateOrderProps {
 }
 
 export const CreateOrder: React.FC<CreateOrderProps> = ({ onCreate }) => {
+  const { authInfo } = useJwtContext();
+  const { createOrder } = useBackend();
   const [amount, setAmount] = useState<string>('');
   const [price, setPrice] = useState<string>('');
   const [side, setSide] = useState<'BUY' | 'SELL'>('BUY');
@@ -24,9 +28,14 @@ export const CreateOrder: React.FC<CreateOrderProps> = ({ onCreate }) => {
     setError(null);
     setSuccess(false);
 
+    if (!authInfo?.pkp.ethAddress) {
+      setError('Not authenticated');
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      // Get wallet address from somewhere (you'll need to implement this)
-      const ethAddress = window.ethereum?.selectedAddress || '0x0000000000000000000000000000000000000001';
+      const ethAddress = authInfo.pkp.ethAddress;
       const caip10Wallet = `eip155:84532:${ethAddress}`;
       
       // Construct CAIP10 token from symbol
@@ -38,31 +47,19 @@ export const CreateOrder: React.FC<CreateOrderProps> = ({ onCreate }) => {
       const tokenAddress = tokenAddresses[symbol] || '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913';
       const caip10Token = `eip155:84532/erc20:${tokenAddress}`;
 
-      const response = await fetch('http://localhost:3000/orders', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const orderData = {
+        amount: parseFloat(amount),
+        side,
+        price: parseFloat(price),
+        caip10Token,
+        caip10Wallet,
+        symbol,
+        metadata: {
+          createdAt: new Date().toISOString(),
         },
-        body: JSON.stringify({
-          amount: parseFloat(amount),
-          side,
-          price: parseFloat(price),
-          caip10Token,
-          caip10Wallet,
-          ethAddress,
-          symbol,
-          metadata: {
-            createdAt: new Date().toISOString(),
-          },
-        }),
-      });
+      };
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create order');
-      }
-
-      const result = await response.json();
+      const result = await createOrder(orderData);
       console.log('Order created:', result);
       setSuccess(true);
       if (onCreate) onCreate();

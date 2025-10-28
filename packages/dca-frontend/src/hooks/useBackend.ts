@@ -121,6 +121,25 @@ export const useBackend = () => {
     [sendRequest]
   );
 
+  // Order functions
+  const getOrders = useCallback(async () => {
+    return sendRequest<any[]>('/orders', 'GET');
+  }, [sendRequest]);
+
+  const createOrder = useCallback(
+    async (order: any) => {
+      return sendRequest<any>('/orders', 'POST', order);
+    },
+    [sendRequest]
+  );
+
+  const cancelOrder = useCallback(
+    async (orderId: string) => {
+      return sendRequest<any>(`/orders/${orderId}`, 'DELETE');
+    },
+    [sendRequest]
+  );
+
   return {
     createDCA,
     deleteDCA,
@@ -129,5 +148,9 @@ export const useBackend = () => {
     enableDCA,
     getDCAs,
     getJwt,
+    // Order functions
+    getOrders,
+    createOrder,
+    cancelOrder,
   };
 };
