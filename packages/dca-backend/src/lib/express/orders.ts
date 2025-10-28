@@ -1,7 +1,9 @@
 import { Response } from 'express';
 import { ethers } from 'ethers';
 import { getPKPInfo } from '@lit-protocol/vincent-app-sdk/jwt';
-import { executeSyncUpTransaction, createSyncUpData, executeDepositTransaction } from '../agenda/jobs/executeDCASwap/utils/signer';
+import { executeSyncUpTransaction, createSyncUpData } from '../agenda/jobs/executeDCASwap/utils/signer';
+import { getErc20ApprovalToolClient, getCallContractWhitelistToolClient } from '../agenda/jobs/executeDCASwap/vincentAbilities';
+import { env } from '../env';
 
 import { Order } from '../mongo/models/Order';
 import { Trade } from '../mongo/models/Trade';
@@ -154,17 +156,60 @@ const depositForUser = async (order: any, amount: number, trade: any) => {
   });
   
   try {
-    // Use direct transaction approach
-    const txHash = await executeDepositTransaction(
-      caip10Token,
-      caip10Wallet,
-      depositAmount,
-      0, // Action: 0 = Native chain
-      order.ethAddress
-    );
+    // Use the exact same approach as the working deposit endpoint
+    // First, approve the Trading contract to spend tokens
+    const erc20ApprovalClient = getErc20ApprovalToolClient();
     
-    console.log(`Deposit successful for user ${order.ethAddress}: ${txHash}`);
-    return { success: true, txHash };
+    const approvalResult = await erc20ApprovalClient.execute(
+      {
+        tokenAddress: tokenAddress,
+        spenderAddress: TRADING_CONTRACT_ADDRESS,
+        tokenAmount: depositAmount,
+        chainId: chainId,
+        rpcUrl: BASE_RPC_URL,
+        alchemyGasSponsor: !!env.ALCHEMY_API_KEY,
+        alchemyGasSponsorApiKey: env.ALCHEMY_API_KEY,
+        alchemyGasSponsorPolicyId: env.ALCHEMY_POLICY_ID,
+      },
+      {
+        delegatorPkpEthAddress: order.ethAddress,
+      }
+    );
+
+    if (!approvalResult.success) {
+      throw new Error(`Approval failed for user ${order.ethAddress}: ${approvalResult.result?.error || 'Unknown error'}`);
+    }
+
+    // Now call the deposit function on the Trading contract
+    const callContractClient = getCallContractWhitelistToolClient();
+
+    const depositResult = await callContractClient.execute({
+      value: '0',
+      contractAddress: TRADING_CONTRACT_ADDRESS,
+      functionAbi: 'function deposit(string _caip10Token, string _caip10Wallet, uint256 _amount, uint8 _action, string _depositorWalletOrName)',
+      functionName: 'deposit',
+      functionArgs: [
+        caip10Token,
+        caip10Wallet,
+        depositAmount,
+        0, // Action: 0 = Native chain
+        order.ethAddress,
+      ],
+      functionArgsBase64: '',
+      appendToCallData: '',
+      chain: 'baseSepolia',
+      chainId: chainId,
+      rpcUrl: BASE_RPC_URL,
+    }, {
+      delegatorPkpEthAddress: order.ethAddress,
+    });
+    
+    if (!depositResult.success) {
+      throw new Error(`Deposit failed for user ${order.ethAddress}: ${depositResult.result?.error || 'Unknown error'}`);
+    }
+    
+    console.log(`Deposit successful for user ${order.ethAddress}: ${depositResult.result?.txHash}`);
+    return depositResult;
     
   } catch (error) {
     console.error(`Deposit failed for user ${order.ethAddress}:`, error);
