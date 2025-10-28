@@ -19,13 +19,13 @@ export const CreateOrder: React.FC<CreateOrderProps> = ({ onCreate }) => {
   
   // Source (what user wants to exchange)
   const [sourceAmount, setSourceAmount] = useState<string>('');
-  const [sourceToken, setSourceToken] = useState<string>('USDC');
+  const [sourceToken, setSourceToken] = useState<string>('EURC');
   const [sourceChain, setSourceChain] = useState<string>('84532'); // Base Sepolia
   
   // Target (what user wants to receive)
   const [targetAmount, setTargetAmount] = useState<string>('');
-  const [targetToken, setTargetToken] = useState<string>('ETH');
-  const [targetChain, setTargetChain] = useState<string>('101'); // Solana
+  const [targetToken, setTargetToken] = useState<string>('USDC');
+  const [targetChain, setTargetChain] = useState<string>('84532'); // Base Sepolia
   
   // Balance states
   const [sourceBalance, setSourceBalance] = useState<number>(0);
@@ -40,22 +40,11 @@ export const CreateOrder: React.FC<CreateOrderProps> = ({ onCreate }) => {
   const getTokenConfig = (chainId: string) => {
     const configs: Record<string, Record<string, { address: string; decimals: number }>> = {
       '84532': { // Base Sepolia
+        'EURC': { address: '0x808456652fdb597867f38412077A9182bf77359F', decimals: 6 },
         'USDC': { address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', decimals: 6 },
         'UNI': { address: '0x1f9840a85d5af5bf1d1762fcd6407d85fd2df3ef', decimals: 18 },
         'WETH': { address: '0x4200000000000000000000000000000000000006', decimals: 18 },
         'DAI': { address: '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb', decimals: 18 },
-      },
-      '11155111': { // Sepolia
-        'USDC': { address: '0x1c7d4b196cb0c7b01d743fbc6116a902379c7238', decimals: 6 }, // Sepolia USDC
-        'UNI': { address: '0x1f9840a85d5af5bf1d1762fcd6407d85fd2df3ef', decimals: 18 },
-        'WETH': { address: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14', decimals: 18 },
-        'DAI': { address: '0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357', decimals: 18 },
-      },
-      '1': { // Ethereum Mainnet
-        'USDC': { address: '0xA0b86a33E6441b8C4C8C0E4A8c5A8F1A8c5A8F1A', decimals: 6 },
-        'UNI': { address: '0x1f9840a85d5af5bf1d1762fcd6407d85fd2df3ef', decimals: 18 },
-        'WETH': { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', decimals: 18 },
-        'DAI': { address: '0x6B175474E89094C44Da98b954EedeAC495271d0F', decimals: 18 },
       }
     };
     return configs[chainId] || configs['84532']; // Default to Base Sepolia
@@ -163,7 +152,7 @@ export const CreateOrder: React.FC<CreateOrderProps> = ({ onCreate }) => {
         throw new Error(`Token ${sourceToken} not supported on chain ${sourceChain}`);
       }
       
-      const caip10Token = `eip155:${sourceChain}/erc20:${tokenInfo.address}`;
+      const caip10Token = `eip155:${sourceChain}:${tokenInfo.address}`;
 
       // Create trading pair symbol
       const symbol = `${targetToken}/${sourceToken}`;
@@ -268,6 +257,7 @@ export const CreateOrder: React.FC<CreateOrderProps> = ({ onCreate }) => {
                   <SelectValue placeholder="Select token" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="EURC">EURC</SelectItem>
                   <SelectItem value="USDC">USDC</SelectItem>
                   <SelectItem value="WETH">WETH</SelectItem>
                   <SelectItem value="DAI">DAI</SelectItem>
@@ -282,8 +272,6 @@ export const CreateOrder: React.FC<CreateOrderProps> = ({ onCreate }) => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="84532">Base Sepolia</SelectItem>
-                  <SelectItem value="1">Ethereum</SelectItem>
-                  <SelectItem value="11155111">Sepolia</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -337,10 +325,10 @@ export const CreateOrder: React.FC<CreateOrderProps> = ({ onCreate }) => {
                   <SelectValue placeholder="Select token" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ETH">ETH</SelectItem>
-                  <SelectItem value="SOL">SOL</SelectItem>
+                  <SelectItem value="EURC">EURC</SelectItem>
                   <SelectItem value="USDC">USDC</SelectItem>
                   <SelectItem value="WETH">WETH</SelectItem>
+                  <SelectItem value="DAI">DAI</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -351,10 +339,7 @@ export const CreateOrder: React.FC<CreateOrderProps> = ({ onCreate }) => {
                   <SelectValue placeholder="Select chain" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="101">Solana</SelectItem>
                   <SelectItem value="84532">Base Sepolia</SelectItem>
-                  <SelectItem value="1">Ethereum</SelectItem>
-                  <SelectItem value="11155111">Sepolia</SelectItem>
                 </SelectContent>
               </Select>
             </div>

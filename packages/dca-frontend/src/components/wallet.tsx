@@ -21,10 +21,10 @@ const formatAddress = (address: string | undefined) => {
 };
 
 export const Wallet: React.FC = () => {
-  const { chain, provider, usdcContract, wbtcContract } = useChain();
+  const { chain, provider, usdcContract, eurcContract } = useChain();
   const [ethBalance, setEthBalance] = useState<string>('0');
   const [usdcBalance, setUsdcBalance] = useState<string>('0');
-  const [wbtcBalance, setWbtcBalance] = useState<string>('0');
+  const [eurcBalance, setEurcBalance] = useState<string>('0');
   const [isLoadingBalance, setIsLoadingBalance] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
@@ -38,15 +38,29 @@ export const Wallet: React.FC = () => {
       setIsLoadingBalance(true);
       setError(null);
 
-      const [ethBalanceWei, usdcBalance, wbtcBalanceWei] = await Promise.all([
+      console.log('Fetching balance for PKP address:', authInfo.pkp.ethAddress);
+      console.log('EURC contract address:', eurcContract.address);
+
+      const [ethBalanceWei, usdcBalance, eurcBalance] = await Promise.all([
         provider.getBalance(authInfo?.pkp.ethAddress),
         usdcContract.balanceOf(authInfo?.pkp.ethAddress),
-        wbtcContract.balanceOf(authInfo?.pkp.ethAddress),
+        eurcContract.balanceOf(authInfo?.pkp.ethAddress),
       ]);
+
+      console.log('Raw balances:');
+      console.log('ETH:', ethBalanceWei.toString());
+      console.log('USDC:', usdcBalance.toString());
+      console.log('EURC:', eurcBalance.toString());
 
       setEthBalance(ethers.utils.formatUnits(ethBalanceWei, 18));
       setUsdcBalance(ethers.utils.formatUnits(usdcBalance, 6));
-      setWbtcBalance(ethers.utils.formatUnits(wbtcBalanceWei, 8));
+      setEurcBalance(ethers.utils.formatUnits(eurcBalance, 6));
+
+      console.log('Formatted balances:');
+      console.log('ETH:', ethers.utils.formatUnits(ethBalanceWei, 18));
+      console.log('USDC:', ethers.utils.formatUnits(usdcBalance, 6));
+      console.log('EURC:', ethers.utils.formatUnits(eurcBalance, 6));
+
 
       setIsLoadingBalance(false);
     } catch (err: unknown) {
@@ -54,7 +68,7 @@ export const Wallet: React.FC = () => {
       setError(`Failed to fetch wallet balance`);
       setIsLoadingBalance(false);
     }
-  }, [authInfo, provider, usdcContract, wbtcContract]);
+  }, [authInfo, provider, usdcContract, eurcContract]);
 
   useEffect(() => {
     queueMicrotask(() => fetchPkpBalance());
@@ -145,7 +159,7 @@ export const Wallet: React.FC = () => {
         </Box>
 
         <Box className="flex flex-row items-stretch justify-between">
-          <BoxDescription>WBTC Balance:</BoxDescription>
+          <BoxDescription>EURC Balance:</BoxDescription>
           <span
             style={{
               fontSize: '20px',
@@ -153,7 +167,7 @@ export const Wallet: React.FC = () => {
               color: '#333',
             }}
           >
-            {isLoadingBalance ? 'Loading...' : `${parseFloat(wbtcBalance).toFixed(8)} WBTC`}
+            {isLoadingBalance ? 'Loading...' : `${parseFloat(eurcBalance).toFixed(6)} EURC`}
           </span>
         </Box>
 

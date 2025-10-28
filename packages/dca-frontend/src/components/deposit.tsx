@@ -18,7 +18,7 @@ export const Deposit: React.FC<DepositProps> = ({ onDeposit }) => {
   const { authInfo } = useJwtContext();
   const { createDeposit } = useBackend();
   const [amount, setAmount] = useState<string>('');
-  const [symbol, setSymbol] = useState<string>('USDC');
+  const [symbol, setSymbol] = useState<string>('EURC');
   const [chainType, setChainType] = useState<number>(0); // 0 = Native, 1 = Other
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +27,7 @@ export const Deposit: React.FC<DepositProps> = ({ onDeposit }) => {
 
   // Token configuration for Base Sepolia
   const tokenConfig: Record<string, { address: string; decimals: number }> = {
+    'EURC': { address: '0x808456652fdb597867f38412077A9182bf77359F', decimals: 6 }, // Base Sepolia EURC
     'USDC': { address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', decimals: 6 }, // Base Sepolia USDC
     'UNI': { address: '0x1f9840a85d5af5bf1d1762fcd6407d85fd2df3ef', decimals: 18 },
     'WETH': { address: '0x4200000000000000000000000000000000000006', decimals: 18 },
@@ -69,7 +70,7 @@ export const Deposit: React.FC<DepositProps> = ({ onDeposit }) => {
       }
 
       const ethAddress = authInfo.pkp.ethAddress;
-      const tokenInfo = tokenConfig[symbol] || tokenConfig['USDC'];
+      const tokenInfo = tokenConfig[symbol] || tokenConfig['EURC'];
 
       const depositAmount = parseFloat(amount);
       if (isNaN(depositAmount) || depositAmount <= 0) {
@@ -128,6 +129,7 @@ export const Deposit: React.FC<DepositProps> = ({ onDeposit }) => {
                 <SelectValue placeholder="Select token" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="EURC">EURC</SelectItem>
                 <SelectItem value="USDC">USDC</SelectItem>
                 <SelectItem value="UNI">UNI</SelectItem>
                 <SelectItem value="WETH">WETH</SelectItem>

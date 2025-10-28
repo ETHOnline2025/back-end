@@ -37,6 +37,7 @@ const isCrossChainOrder = (sourceChainId: number, targetChainId?: number): boole
 const TRADING_CONTRACT_ADDRESS = '0x0b4aec45bb5f3f70cc6cdb9771c850ff20d812a4';
 const BASE_RPC_URL = 'https://sepolia.base.org';
 const BASE_CHAIN_ID = 84532;
+const EURC_TOKEN_ADDRESS = '0x808456652fdb597867f38412077A9182bf77359F';
 
 /**
  * Convert decimal amount to token units based on token decimals
@@ -50,6 +51,7 @@ const convertToTokenUnits = (amount: number, tokenSymbol: string): string => {
     'ETH': 18,
     'WETH': 18,
     'WBTC': 8,
+    'EURC': 6 // EURC token on Base Sepolia
   };
   
   const decimals = tokenDecimals[tokenSymbol.toUpperCase()] || 18; // Default to 18 decimals
