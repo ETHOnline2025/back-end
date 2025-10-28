@@ -241,13 +241,16 @@ const processOrderMatchingWithoutTransaction = async (newOrder: any): Promise<{ 
       console.log(`🌐 Implicit cross-chain matching: found orders on different chains for same token`);
     } else {
       // Same-chain matching: check for same-side orders with different tokens (swap scenario)
+      // For swap matching, we need to find orders where the rates are compatible
+      // If Order A wants to buy Token X at rate R1, and Order B wants to buy Token Y at rate R2,
+      // they can match if R1 ≈ 1/R2 (within some tolerance)
       const existingOrdersSameSide = await Order.find({
         status: 'PENDING',
         sourceChainId: newOrderChainId,
         side: newOrder.side, // Same side (both BUY or both SELL)
         tokenSymbol: { $ne: newOrder.tokenSymbol }, // Different token
-        price: newOrder.side === 'BUY' ? { $lte: newOrder.price } : { $gte: newOrder.price }
-      }).limit(1);
+        // For swap matching, we'll check price compatibility later in the loop
+      }).limit(10); // Get more candidates to check price compatibility
       
       if (existingOrdersSameSide.length > 0) {
         // Found same-side orders with different tokens - treat as swap
@@ -296,6 +299,24 @@ const processOrderMatchingWithoutTransaction = async (newOrder: any): Promise<{ 
   for (const existingOrder of potentialMatches) {
     if (remainingNewOrderAmount <= 0) {
       break;
+    }
+
+    // Check price compatibility for swap scenarios
+    if (query.tokenSymbol && existingOrder.tokenSymbol !== newOrder.tokenSymbol) {
+      // This is a swap scenario - check if rates are compatible
+      const rate1 = newOrder.price;
+      const rate2 = existingOrder.price;
+      const expectedRate = 1 / rate2;
+      const tolerance = 0.1; // 10% tolerance
+      
+      const isCompatible = Math.abs(rate1 - expectedRate) / expectedRate <= tolerance;
+      
+      console.log(`🔄 Swap price check: ${rate1} vs ${expectedRate} (from ${rate2}), compatible: ${isCompatible}`);
+      
+      if (!isCompatible) {
+        console.log(`❌ Price not compatible for swap: ${rate1} vs ${expectedRate}`);
+        continue; // Skip this order
+      }
     }
 
     const fillAmount = Math.min(existingOrder.remainingAmount, remainingNewOrderAmount);
