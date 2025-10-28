@@ -45,7 +45,7 @@ export const Trading: React.FC = () => {
         </TabsContent>
 
         <TabsContent value={Tab.DepositHistory}>
-          <DepositHistory onRefresh={() => setActiveTab(Tab.DepositHistory)} />
+          <DepositHistory />
         </TabsContent>
 
         <TabsContent value={Tab.Trading}>
