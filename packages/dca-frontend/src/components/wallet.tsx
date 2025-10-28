@@ -1,26 +1,39 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+
+import { Check, Copy, LogOut, RefreshCcw, WalletIcon } from 'lucide-react';
 import { ethers } from 'ethers';
-import { LogOut, RefreshCcw, Copy, Check, WalletIcon } from 'lucide-react';
 
 import { useJwtContext } from '@lit-protocol/vincent-app-sdk/react';
 
 import { Badge } from '@/components/ui/badge';
-import { Box, BoxDescription, BoxTitle } from '@/components/ui/box';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
+import { Card } from '@/components/ui/card';
 import { Spinner } from '@/components/ui/spinner';
 import { env } from '@/config/env';
 import { useChain } from '@/hooks/useChain';
+import { cn } from '@/lib/utils';
 
 const { VITE_APP_ID } = env;
 
 const formatAddress = (address: string | undefined) => {
-  if (!address) return 'Loading...';
+  if (!address) return '—';
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
 };
 
-export const Wallet: React.FC = () => {
+const formatBalance = (value: string, maximumFractionDigits: number) => {
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return '0';
+  return numeric.toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits,
+  });
+};
+
+interface WalletProps {
+  className?: string;
+}
+
+export const Wallet: React.FC<WalletProps> = ({ className }) => {
   const { chain, provider, usdcContract, wbtcContract } = useChain();
   const [ethBalance, setEthBalance] = useState<string>('0');
   const [usdcBalance, setUsdcBalance] = useState<string>('0');
@@ -30,179 +43,180 @@ export const Wallet: React.FC = () => {
   const [copied, setCopied] = useState<boolean>(false);
   const { authInfo, logOut } = useJwtContext();
 
-  // Function to fetch PKP balances
+  const pkpAddress = authInfo?.pkp.ethAddress;
+
   const fetchPkpBalance = useCallback(async () => {
-    if (!authInfo?.pkp.ethAddress) return;
+    if (!pkpAddress) return;
 
     try {
       setIsLoadingBalance(true);
       setError(null);
 
-      const [ethBalanceWei, usdcBalance, wbtcBalanceWei] = await Promise.all([
-        provider.getBalance(authInfo?.pkp.ethAddress),
-        usdcContract.balanceOf(authInfo?.pkp.ethAddress),
-        wbtcContract.balanceOf(authInfo?.pkp.ethAddress),
+      const [ethBalanceWei, usdcBalanceRaw, wbtcBalanceWei] = await Promise.all([
+        provider.getBalance(pkpAddress),
+        usdcContract.balanceOf(pkpAddress),
+        wbtcContract.balanceOf(pkpAddress),
       ]);
 
       setEthBalance(ethers.utils.formatUnits(ethBalanceWei, 18));
-      setUsdcBalance(ethers.utils.formatUnits(usdcBalance, 6));
+      setUsdcBalance(ethers.utils.formatUnits(usdcBalanceRaw, 6));
       setWbtcBalance(ethers.utils.formatUnits(wbtcBalanceWei, 8));
-
-      setIsLoadingBalance(false);
-    } catch (err: unknown) {
+    } catch (err) {
       console.error('Error fetching PKP balances:', err);
-      setError(`Failed to fetch wallet balance`);
+      setError('Failed to fetch wallet balance');
+    } finally {
       setIsLoadingBalance(false);
     }
-  }, [authInfo, provider, usdcContract, wbtcContract]);
+  }, [pkpAddress, provider, usdcContract, wbtcContract]);
 
   useEffect(() => {
     queueMicrotask(() => fetchPkpBalance());
   }, [fetchPkpBalance]);
 
   const copyAddress = useCallback(async () => {
-    const address = authInfo?.pkp.ethAddress;
-    if (!address) return;
+    if (!pkpAddress) return;
     try {
-      await navigator.clipboard.writeText(address);
+      await navigator.clipboard.writeText(pkpAddress);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch (err) {
       console.error('Failed to copy address to clipboard', err);
     }
-  }, [authInfo?.pkp.ethAddress]);
+  }, [pkpAddress]);
+
+  const balances = useMemo(
+    () => [
+      {
+        label: `${chain.symbol} Balance`,
+        value: isLoadingBalance ? 'Loading…' : `${formatBalance(ethBalance, 8)} ${chain.symbol}`,
+        accent: 'bg-emerald-500/10 text-emerald-300',
+      },
+      {
+        label: 'USDC Balance',
+        value: isLoadingBalance ? 'Loading…' : `${formatBalance(usdcBalance, 6)} USDC`,
+        accent: 'bg-cyan-500/10 text-cyan-300',
+      },
+      {
+        label: 'WBTC Balance',
+        value: isLoadingBalance ? 'Loading…' : `${formatBalance(wbtcBalance, 8)} WBTC`,
+        accent: 'bg-orange-500/10 text-orange-300',
+      },
+    ],
+    [chain.symbol, ethBalance, isLoadingBalance, usdcBalance, wbtcBalance]
+  );
 
   return (
-    <Card data-test-id="wallet" className="w-full bg-white p-6 shadow-sm">
-      <CardHeader className="text-center">
-        <CardTitle className="text-2xl font-bold">Wallet</CardTitle>
-      </CardHeader>
-
-      <Separator />
-
-      <CardContent className="text-center">
-        <Box className="flex flex-row items-center justify-between">
-          <BoxTitle>Wallet Address:</BoxTitle>
-
-          <div className="flex items-center gap-2">
-            <a
-              href={`${chain.blockExplorerUrls[0]}/address/${authInfo?.pkp.ethAddress}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:opacity-80"
-              title={authInfo?.pkp.ethAddress}
-            >
-              {formatAddress(authInfo?.pkp.ethAddress)}
-            </a>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={copyAddress}
-              disabled={!authInfo?.pkp.ethAddress}
-              title={copied ? 'Copied!' : 'Copy address'}
-              aria-label="Copy wallet address"
-            >
-              {copied ? <Check /> : <Copy />}
-            </Button>
+    <Card
+      className={cn(
+        'w-full rounded-2xl border border-white/5 bg-[#121316] p-6 text-white',
+        className
+      )}
+    >
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-2xl font-bold tracking-tight text-white">Wallet</h2>
+            <p className="mt-1 text-sm text-white/60">
+              Manage your PKP account, view balances, and access quick actions.
+            </p>
           </div>
-        </Box>
+          <Badge className="bg-[#1a1f2e] px-3 py-1 text-sm text-white">
+            Network: {chain.name}
+          </Badge>
+        </div>
 
-        <Separator />
+        <div className="rounded-xl border border-white/10 bg-[#0b0d0e] p-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/10 text-blue-300">
+                <WalletIcon className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">PKP Address</p>
+                <p className="font-mono text-sm text-white">{formatAddress(pkpAddress)}</p>
+              </div>
+            </div>
 
-        <Box className="flex flex-row items-stretch justify-between">
-          <BoxDescription>Network:</BoxDescription>
-          <Badge>{chain.name}</Badge>
-        </Box>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={copyAddress}
+                disabled={!pkpAddress}
+                className="border-[#2563eb]/40 bg-[#1a1f2e] text-white hover:bg-[#1f2a3d]"
+              >
+                {copied ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}
+                {copied ? 'Copied' : 'Copy Address'}
+              </Button>
+            </div>
+          </div>
+        </div>
 
-        <Separator />
-
-        <Box className="flex flex-row items-stretch justify-between">
-          <BoxDescription>ETH Balance:</BoxDescription>
-          <span
-            style={{
-              fontSize: '20px',
-              fontWeight: 'bold',
-              color: '#333',
-            }}
-          >
-            {isLoadingBalance
-              ? 'Loading...'
-              : `${parseFloat(ethBalance).toFixed(8)} ${chain.symbol}`}
-          </span>
-        </Box>
-
-        <Box className="flex flex-row items-stretch justify-between">
-          <BoxDescription>USDC Balance:</BoxDescription>
-          <span
-            style={{
-              fontSize: '20px',
-              fontWeight: 'bold',
-              color: '#333',
-            }}
-          >
-            {isLoadingBalance ? 'Loading...' : `${parseFloat(usdcBalance).toFixed(6)} USDC`}
-          </span>
-        </Box>
-
-        <Box className="flex flex-row items-stretch justify-between">
-          <BoxDescription>WBTC Balance:</BoxDescription>
-          <span
-            style={{
-              fontSize: '20px',
-              fontWeight: 'bold',
-              color: '#333',
-            }}
-          >
-            {isLoadingBalance ? 'Loading...' : `${parseFloat(wbtcBalance).toFixed(8)} WBTC`}
-          </span>
-        </Box>
+        <div className="grid gap-4 md:grid-cols-3">
+          {balances.map((item) => (
+            <div
+              key={item.label}
+              className="rounded-xl border border-white/10 bg-[#0f1218] px-5 py-4"
+            >
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">{item.label}</p>
+              <p className="mt-2 flex items-center gap-2 text-lg font-semibold text-white">
+                {item.value}
+                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${item.accent}`}>
+                  Live
+                </span>
+              </p>
+            </div>
+          ))}
+        </div>
 
         {error && (
-          <div
-            style={{
-              backgroundColor: '#fff1f0',
-              color: '#ff4d4f',
-              padding: '12px',
-              borderRadius: '6px',
-              marginBottom: '16px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
-          >
-            <span role="img" aria-label="Error">
-              ⚠️
-            </span>{' '}
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
             {error}
           </div>
         )}
 
-        <Button className="w-full" disabled={isLoadingBalance} onClick={fetchPkpBalance}>
-          {isLoadingBalance ? (
-            <>
-              <Spinner variant="destructive" size="sm" /> Refreshing...
-            </>
-          ) : (
-            <>
-              <RefreshCcw /> Refresh Balance
-            </>
-          )}
-        </Button>
-        <Button
-          className="w-full mt-2"
-          onClick={() =>
-            window.open(
-              `https://dashboard.heyvincent.ai/user/appId/${VITE_APP_ID}/wallet`,
-              '_blank'
-            )
-          }
-        >
-          <WalletIcon /> withdraw with walletconnect
-        </Button>
-        <Button className="w-full mt-2" variant="destructive" onClick={logOut}>
-          <LogOut /> Log Out
-        </Button>
-      </CardContent>
+        <div className="flex flex-col gap-2 md:flex-row md:flex-wrap">
+          <Button
+            className={cn(
+              'w-full gap-2 bg-[#2563eb] text-white hover:bg-[#1d4ed8]',
+              'md:flex-1 md:w-auto'
+            )}
+            disabled={isLoadingBalance}
+            onClick={fetchPkpBalance}
+          >
+            {isLoadingBalance ? (
+              <>
+                <Spinner className="h-4 w-4" /> Refreshing...
+              </>
+            ) : (
+              <>
+                <RefreshCcw className="h-4 w-4" /> Refresh Balance
+              </>
+            )}
+          </Button>
+          <Button
+            className={cn(
+              'w-full gap-2 bg-[#1a1f2e] text-white hover:bg-[#1f2a3d]',
+              'md:flex-1 md:w-auto'
+            )}
+            onClick={() =>
+              window.open(
+                `https://dashboard.heyvincent.ai/user/appId/${VITE_APP_ID}/wallet`,
+                '_blank'
+              )
+            }
+          >
+            <WalletIcon className="h-4 w-4" /> Withdraw with WalletConnect
+          </Button>
+          <Button
+            className={cn('w-full gap-2 md:flex-1 md:w-auto')}
+            variant="destructive"
+            onClick={logOut}
+          >
+            <LogOut className="h-4 w-4" /> Log Out
+          </Button>
+        </div>
+      </div>
     </Card>
   );
 };

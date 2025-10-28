@@ -1,14 +1,12 @@
 import * as Sentry from '@sentry/react';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import './index.css';
 import App from './App';
-import { initZendesk } from '@/lib/zendesk';
+import './index.css';
 
 import { env } from '@/config/env';
 
 // Initialize Zendesk support widget
-initZendesk();
 
 const { VITE_BACKEND_URL, VITE_IS_DEVELOPMENT, VITE_SENTRY_DSN, VITE_SENTRY_FILTER } = env;
 

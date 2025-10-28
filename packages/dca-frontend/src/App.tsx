@@ -8,14 +8,15 @@ import { env } from '@/config/env';
 import './App.css';
 
 import { Trading } from '@/pages/trading';
-import { Login } from '@/pages/login';
+import { Home } from './pages/home';
 
 const { VITE_APP_ID } = env;
 
 function AppContent() {
   const { authInfo } = useJwtContext();
 
-  return authInfo ? <Trading /> : <Login />;
+  // return authInfo ? <Trading /> : <Login />;
+  return authInfo ? <Trading /> : <Home />;
 }
 
 function App() {

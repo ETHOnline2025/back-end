@@ -1,20 +1,34 @@
-import React, { useState, useEffect } from 'react';
-import { useJwtContext } from '@lit-protocol/vincent-app-sdk/react';
-import { ethers } from 'ethers';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Spinner } from '@/components/ui/spinner';
 import { useBackend } from '@/hooks/useBackend';
+import { useJwtContext } from '@lit-protocol/vincent-app-sdk/react';
+import { ethers } from 'ethers';
+import React, { useEffect, useState } from 'react';
 
 interface DepositProps {
   onDeposit?: () => void;
+  trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export const Deposit: React.FC<DepositProps> = ({ onDeposit }) => {
+export const Deposit: React.FC<DepositProps> = ({ onDeposit, trigger, open, onOpenChange }) => {
   const { authInfo } = useJwtContext();
   const { createDeposit } = useBackend();
   const [amount, setAmount] = useState<string>('');
@@ -24,12 +38,17 @@ export const Deposit: React.FC<DepositProps> = ({ onDeposit }) => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [balance, setBalance] = useState<string | null>(null);
+  const [internalOpen, setInternalOpen] = useState(false);
+
+  // Use controlled or uncontrolled mode
+  const isOpen = open !== undefined ? open : internalOpen;
+  const setIsOpen = onOpenChange || setInternalOpen;
 
   // Token configuration for Base Sepolia
   const tokenConfig: Record<string, { address: string; decimals: number }> = {
-    'USDC': { address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', decimals: 6 }, // Base Sepolia USDC
-    'UNI': { address: '0x1f9840a85d5af5bf1d1762fcd6407d85fd2df3ef', decimals: 18 },
-    'WETH': { address: '0x4200000000000000000000000000000000000006', decimals: 18 },
+    USDC: { address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', decimals: 6 }, // Base Sepolia USDC
+    UNI: { address: '0x1f9840a85d5af5bf1d1762fcd6407d85fd2df3ef', decimals: 18 },
+    WETH: { address: '0x4200000000000000000000000000000000000006', decimals: 18 },
   };
 
   // Fetch balance when symbol or authInfo changes
@@ -45,7 +64,7 @@ export const Deposit: React.FC<DepositProps> = ({ onDeposit }) => {
         const provider = new ethers.providers.JsonRpcProvider('https://sepolia.base.org');
         const erc20ABI = ['function balanceOf(address owner) view returns (uint256)'];
         const tokenContract = new ethers.Contract(tokenInfo.address, erc20ABI, provider);
-        
+
         const balance = await tokenContract.balanceOf(authInfo.pkp.ethAddress);
         const parsedBalance = ethers.utils.formatUnits(balance, tokenInfo.decimals);
         setBalance(parseFloat(parsedBalance).toFixed(6));
@@ -83,13 +102,16 @@ export const Deposit: React.FC<DepositProps> = ({ onDeposit }) => {
       const result = await createDeposit({
         tokenAddress: tokenInfo.address,
         amount: amountInSmallestUnit,
-        chainType: chainType
+        chainType: chainType,
       });
       console.log('Deposit successful:', result);
 
       setSuccess(true);
       if (onDeposit) onDeposit();
-      
+
+      // Close modal on successful deposit
+      setIsOpen(false);
+
       // Refresh balance
       try {
         const provider = new ethers.providers.JsonRpcProvider('https://sepolia.base.org');
@@ -101,7 +123,7 @@ export const Deposit: React.FC<DepositProps> = ({ onDeposit }) => {
       } catch (error) {
         console.error('Error refreshing balance:', error);
       }
-      
+
       // Reset form
       setAmount('');
       setTimeout(() => setSuccess(false), 3000);
@@ -114,74 +136,76 @@ export const Deposit: React.FC<DepositProps> = ({ onDeposit }) => {
   };
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle>Deposit Tokens</CardTitle>
-      </CardHeader>
-      <Separator />
-      <CardContent className="space-y-4 p-6">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="symbol">Token</Label>
-            <Select value={symbol} onValueChange={setSymbol}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select token" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="USDC">USDC</SelectItem>
-                <SelectItem value="UNI">UNI</SelectItem>
-                <SelectItem value="WETH">WETH</SelectItem>
-              </SelectContent>
-            </Select>
-            {balance !== null && (
-              <div className="text-sm text-gray-500">
-                Balance: {balance} {symbol}
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Deposit Tokens</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="symbol">Token</Label>
+              <Select value={symbol} onValueChange={setSymbol}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select token" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USDC">USDC</SelectItem>
+                  <SelectItem value="UNI">UNI</SelectItem>
+                  <SelectItem value="WETH">WETH</SelectItem>
+                </SelectContent>
+              </Select>
+              {balance !== null && (
+                <div className="text-sm text-gray-500">
+                  Balance: {balance} {symbol}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="amount">Amount</Label>
+              <Input
+                id="amount"
+                type="number"
+                step="0.000001"
+                placeholder="Enter amount"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                disabled={isLoading}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="chainType">Chain Type</Label>
+              <Select
+                value={chainType.toString()}
+                onValueChange={(value) => setChainType(parseInt(value))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select chain type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Native (Base/Ethereum)</SelectItem>
+                  <SelectItem value="1">Other (Solana)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {error && <div className="text-sm text-red-500">{error}</div>}
+
+            {success && (
+              <div className="text-sm text-green-500">
+                Deposit successful! You can now create orders.
               </div>
             )}
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="amount">Amount</Label>
-            <Input
-              id="amount"
-              type="number"
-              step="0.000001"
-              placeholder="Enter amount"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              disabled={isLoading}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="chainType">Chain Type</Label>
-            <Select value={chainType.toString()} onValueChange={(value) => setChainType(parseInt(value))}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select chain type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="0">Native (Base/Ethereum)</SelectItem>
-                <SelectItem value="1">Other (Solana)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {error && (
-            <div className="text-sm text-red-500">{error}</div>
-          )}
-
-          {success && (
-            <div className="text-sm text-green-500">
-              Deposit successful! You can now create orders.
-            </div>
-          )}
-
-          <Button type="submit" disabled={isLoading} className="w-full">
-            {isLoading ? <Spinner /> : 'Deposit'}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+            <Button type="submit" disabled={isLoading} className="w-full">
+              {isLoading ? <Spinner /> : 'Deposit'}
+            </Button>
+          </form>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 };
-
